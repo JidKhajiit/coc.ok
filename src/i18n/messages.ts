@@ -1,0 +1,428 @@
+export type Locale = 'ru' | 'en'
+
+export const LOCALES: Locale[] = ['ru', 'en']
+
+export function normalizeLocale(value: unknown): Locale {
+  return value === 'en' ? 'en' : 'ru'
+}
+
+export function localeTag(locale: Locale): string {
+  return locale === 'en' ? 'en-US' : 'ru-RU'
+}
+
+type Dict = Record<string, string>
+
+const ru: Dict = {
+  'app.settings': 'Настройки',
+  'app.tabs': 'Разделы',
+  'app.tab.collection': 'Коллекция',
+  'app.tab.wishlist': 'Нужные',
+  'app.tab.trades': 'Обмены',
+  'app.tab.trends': 'Тренды',
+  'app.heroTitle': 'Обмен картами без хаоса',
+  'app.heroLead':
+    'Коллекция, повторы, вишлист и история — всё в одном месте для Clash of Critters.',
+  'app.stat.ofCards': 'из {n} карт',
+  'app.stat.forTrade': 'на обмен',
+  'app.stat.needed': 'нужных',
+  'app.stat.tradesToday': 'за сегодня',
+  'app.footer': 'Данные хранятся локально в браузере · {cards} карт · 15 сетов',
+
+  'common.close': 'Закрыть',
+  'common.cancel': 'Отмена',
+  'common.delete': 'Удалить',
+  'common.all': 'Все',
+  'common.copy': 'Копировать',
+  'common.copied': 'Скопировано',
+  'common.clearSearch': 'Очистить поиск',
+  'common.unnamed': 'Без названия',
+  'common.chooseCard': 'Выберите карту…',
+  'common.note': 'Заметка',
+  'common.optional': 'Необязательно',
+
+  'card.blue': 'син',
+  'card.gold': 'зол',
+  'card.for': 'для {names}',
+  'card.forPrefix': 'для {names}',
+  'card.tradeable': ' · {n} на обмен',
+  'card.reservedFor': 'для: {names}',
+
+  'need.remove': 'Убрать из нужных',
+  'need.add': 'Нужна',
+  'need.markAccounts': 'Отметить нужные аккаунты',
+  'need.needed': 'Нужна: {names}',
+  'need.all': 'Нужна всем',
+  'need.clearAll': 'Снять со всех',
+  'need.forTradePill': 'на обмен',
+  'need.forTradeTitle': 'Нужна для потенциального обмена',
+
+  'settings.title': 'Настройки',
+  'settings.language': 'Язык',
+  'settings.languageHint': 'Интерфейс приложения и подписи в шаблонах обменов.',
+  'settings.accounts': 'Аккаунты',
+  'settings.accountsHelp':
+    'Если аккаунт не задан или один — на карте одна звезда без меню. Два и больше — звезда с выбором.',
+  'settings.accountsHelpAria': 'Подсказка про аккаунты',
+  'settings.accountsEmpty': 'Список пуст — режим одной звезды.',
+  'settings.accountPlaceholder': 'Акк {n}',
+  'settings.addAccount': 'Добавить аккаунт',
+  'settings.backup': 'Бэкап данных',
+  'settings.backupHint':
+    'Данные в localStorage. Во встроенном браузере Cursor скачивание часто не работает — используйте копирование в буфер.',
+  'settings.copyBackup': 'Копировать бэкап',
+  'settings.download': 'Скачать файл',
+  'settings.upload': 'Загрузить файл',
+  'settings.pasteJson': 'Вставить JSON',
+  'settings.pastePlaceholder': 'Вставьте сюда JSON бэкапа…',
+  'settings.import': 'Импортировать',
+  'settings.importConfirm':
+    'Импорт заменит текущую коллекцию, нужные, обмены и аккаунты. Продолжить?',
+  'settings.msg.copied': 'Бэкап скопирован в буфер обмена',
+  'settings.msg.copyFail':
+    'Не удалось скопировать — попробуйте скачать в обычном браузере',
+  'settings.msg.imported': 'Импорт выполнен',
+  'settings.msg.fileFail': 'Не удалось прочитать файл',
+  'settings.msg.badJson': 'Некорректный JSON',
+
+  'collection.title': 'Коллекция',
+  'collection.search': 'Имя, сет или №…',
+  'collection.sort': 'Сортировка',
+  'collection.sort.number': 'По номеру',
+  'collection.sort.rarityAsc': 'По звёздам: мало → много',
+  'collection.sort.rarityDesc': 'По звёздам: много → мало',
+  'collection.set': 'Сет',
+  'collection.rarity': 'Редкость',
+  'collection.rarityAll': '★ все',
+  'collection.color': 'Цвет',
+  'collection.colorAll': 'Все',
+  'collection.colorBlue': 'Син',
+  'collection.colorGold': 'Зол',
+  'collection.filterOwned': 'Мои',
+  'collection.filterTrade': 'На обмен',
+  'collection.filterNeeded': '★ нужные',
+  'collection.filterHideUnknown': 'Скрыть ?',
+  'collection.reset': 'Сбросить',
+  'collection.count': '{n} карт',
+  'collection.empty': 'Ничего не найдено.',
+
+  'cardPicker.empty': 'Ничего не найдено',
+  'collection.qtyDown': 'Убавить',
+  'collection.qtyUp': 'Добавить',
+
+  'wishlist.title': 'Нужные карты',
+  'wishlist.lead':
+    'Карты с ×0, помеченные ★ и без копии под потенциальный обмен. Не хватает: {n}. Аккаунты настраиваются в ⚙.',
+  'wishlist.search': 'Поиск по нужным…',
+  'wishlist.filterAll': 'Все нужные',
+  'wishlist.filterMissing': 'Только ×0',
+  'wishlist.filterAccount': 'Нужны {name} ({n})',
+  'wishlist.empty': 'Пока пусто — отметьте нужные в коллекции или заведите карты с 0.',
+
+  'trends.title': 'Тренды',
+  'trends.lead':
+    'На основе истории и архива{count}. Чем больше записей — тем точнее картина.',
+  'trends.leadCount': ' ({n})',
+  'trends.empty': 'Пока нет данных.',
+  'trends.givenTitle': 'Чаще всего отдают',
+  'trends.givenHint': 'Карты, которые уходят в обмен',
+  'trends.receivedTitle': 'Чаще всего получают',
+  'trends.receivedHint': 'Карты, которые чаще всего запрашивают',
+
+  'templates.summary': 'Шаблоны',
+  'templates.hint':
+    'LF (нужные) — как вкладка «Нужные»; LF (×0) — только отсутствующие; FT — повторки без reserved.',
+  'templates.splitByStars': 'Разделение по звёздам',
+  'templates.excludeGold': 'Без золотых карт',
+  'templates.preview': 'Превью',
+  'templates.lfNeededFt': 'LF (нужные) + FT',
+  'templates.lfNeededFtHint': 'Весь список «Нужные» + повторы',
+  'templates.lfMissingFt': 'LF (×0) + FT',
+  'templates.lfMissingFtHint': 'Только карты, которых нет + повторы',
+  'templates.lfNeeded': 'Looking for (нужные)',
+  'templates.lfNeededHint': '×0, ★ и «на обмен»',
+  'templates.lfMissing': 'Looking for (×0)',
+  'templates.lfMissingHint': 'Только карты с количеством 0',
+  'templates.ft': 'For trade',
+  'templates.ftHint': 'Свободные повторки',
+  'templates.lookingFor': 'Ищу',
+  'templates.forTrade': 'На обмен',
+
+  'trades.title': 'Обмены',
+  'trades.potential': 'Потенциальные обмены',
+  'trades.potentialHelpAria': 'Подсказка про потенциальные обмены',
+  'trades.potentialHelp':
+    'Можно запланировать отдачу без повторки — карта будет красной. Если повторка есть — помечается reserved.',
+  'trades.plan': 'Запланировать',
+  'trades.editingPotential': 'Редактирование потенциального обмена',
+  'trades.give': 'Отдаю',
+  'trades.want': 'Хочу получить',
+  'trades.wantOptional': 'Хочу получить (необязательно)',
+  'trades.receiveUnset': 'не указано',
+  'trades.confirmNeedsReceive': 'Укажите карту получения, чтобы отметить обмен',
+  'trades.partnerOptional': 'Ник игрока (необязательно)',
+  'trades.partnerPh': 'Ник',
+  'trades.noCopyWarn':
+    'Нет копии для обмена (нужна повторка) — в списке карта будет красной.',
+  'trades.savePotential': 'Сохранить потенциал',
+  'trades.saveChanges': 'Сохранить изменения',
+  'trades.potentialEmpty': 'Потенциальных обменов нет.',
+  'trades.edit': 'Редактировать',
+  'trades.completed': 'Состоялся',
+  'trades.confirmCompleted': 'Отметить обмен как состоявшийся?',
+  'trades.archive': 'В архив',
+  'trades.confirmArchive':
+    'Отправить в архив? Обмен не состоялся — коллекция не изменится.',
+  'trades.confirmRemovePotential': 'Отменить потенциальный обмен?',
+  'trades.saveFail': 'Не удалось сохранить',
+  'trades.notInCollection': ' · нет в коллекции',
+  'trades.noDuplicate': ' · нет повторки',
+  'trades.history': 'История обменов',
+  'trades.filterAll': 'Все',
+  'trades.filterMine': 'Мои',
+  'trades.filterArchive': 'Архив',
+  'trades.filterAria': 'Фильтр истории',
+  'trades.newTrade': 'Новый обмен',
+  'trades.modeMine': 'Мой обмен',
+  'trades.modeArchive': 'В архив (для трендов)',
+  'trades.modeAria': 'Тип записи',
+  'trades.archiveInfo':
+    'Замеченный чужой обмен: коллекция не меняется, запись идёт в тренды.',
+  'trades.gave': 'Отдали',
+  'trades.got': 'Получили',
+  'trades.giveDup': 'Отдаю (повторка)',
+  'trades.receive': 'Получаю',
+  'trades.partnerLabel': 'Партнёр (необязательно)',
+  'trades.partnerPlayer': 'Ник игрока',
+  'trades.notePh': 'Комментарий',
+  'trades.noTradeable':
+    'Нет повторок для обмена — сначала отметьте лишние карты в коллекции.',
+  'trades.saveTrade': 'Сохранить обмен',
+  'trades.toArchive': 'В архив',
+  'trades.historyEmpty': 'Обменов пока нет.',
+  'trades.historyFilterEmpty': 'Нет записей в этом фильтре.',
+  'trades.badgeArchive': 'архив',
+  'trades.badgeCancelled': 'не состоялся',
+  'trades.confirmDeleteHistory': 'Удалить запись из истории обменов?',
+  'trades.chip.missing': 'нет копии для обмена',
+  'trades.chip.gold': 'золотая',
+  'trades.chip.blue': 'синяя',
+  'trades.chip.none': ' · нет',
+  'trades.chip.owned': 'У вас: {n}',
+}
+
+const en: Dict = {
+  'app.settings': 'Settings',
+  'app.tabs': 'Sections',
+  'app.tab.collection': 'Collection',
+  'app.tab.wishlist': 'Needed',
+  'app.tab.trades': 'Trades',
+  'app.tab.trends': 'Trends',
+  'app.heroTitle': 'Card trades without the chaos',
+  'app.heroLead':
+    'Collection, duplicates, wishlist and history — all in one place for Clash of Critters.',
+  'app.stat.ofCards': 'of {n} cards',
+  'app.stat.forTrade': 'for trade',
+  'app.stat.needed': 'needed',
+  'app.stat.tradesToday': 'today',
+  'app.footer': 'Data is stored locally in the browser · {cards} cards · 15 sets',
+
+  'common.close': 'Close',
+  'common.cancel': 'Cancel',
+  'common.delete': 'Delete',
+  'common.all': 'All',
+  'common.copy': 'Copy',
+  'common.copied': 'Copied',
+  'common.clearSearch': 'Clear search',
+  'common.unnamed': 'Unnamed',
+  'common.chooseCard': 'Choose a card…',
+  'common.note': 'Note',
+  'common.optional': 'Optional',
+
+  'card.blue': 'blu',
+  'card.gold': 'gld',
+  'card.for': 'for {names}',
+  'card.forPrefix': 'for {names}',
+  'card.tradeable': ' · {n} for trade',
+  'card.reservedFor': 'for: {names}',
+
+  'need.remove': 'Remove from needed',
+  'need.add': 'Need',
+  'need.markAccounts': 'Mark needed accounts',
+  'need.needed': 'Needed: {names}',
+  'need.all': 'Need for all',
+  'need.clearAll': 'Clear all',
+  'need.forTradePill': 'for trade',
+  'need.forTradeTitle': 'Needed for a potential trade',
+
+  'settings.title': 'Settings',
+  'settings.language': 'Language',
+  'settings.languageHint': 'App interface and trade template labels.',
+  'settings.accounts': 'Accounts',
+  'settings.accountsHelp':
+    'With no accounts or one account — a single star with no menu. Two or more — star with account picker.',
+  'settings.accountsHelpAria': 'Accounts help',
+  'settings.accountsEmpty': 'List is empty — single-star mode.',
+  'settings.accountPlaceholder': 'Acc {n}',
+  'settings.addAccount': 'Add account',
+  'settings.backup': 'Data backup',
+  'settings.backupHint':
+    'Data lives in localStorage. In Cursor’s embedded browser downloads often fail — use copy to clipboard.',
+  'settings.copyBackup': 'Copy backup',
+  'settings.download': 'Download file',
+  'settings.upload': 'Upload file',
+  'settings.pasteJson': 'Paste JSON',
+  'settings.pastePlaceholder': 'Paste backup JSON here…',
+  'settings.import': 'Import',
+  'settings.importConfirm':
+    'Import will replace your collection, needed list, trades and accounts. Continue?',
+  'settings.msg.copied': 'Backup copied to clipboard',
+  'settings.msg.copyFail': 'Could not copy — try download in a regular browser',
+  'settings.msg.imported': 'Import complete',
+  'settings.msg.fileFail': 'Could not read the file',
+  'settings.msg.badJson': 'Invalid JSON',
+
+  'collection.title': 'Collection',
+  'collection.search': 'Name, set or #…',
+  'collection.sort': 'Sort',
+  'collection.sort.number': 'By number',
+  'collection.sort.rarityAsc': 'By stars: low → high',
+  'collection.sort.rarityDesc': 'By stars: high → low',
+  'collection.set': 'Set',
+  'collection.rarity': 'Rarity',
+  'collection.rarityAll': '★ all',
+  'collection.color': 'Color',
+  'collection.colorAll': 'All',
+  'collection.colorBlue': 'Blu',
+  'collection.colorGold': 'Gld',
+  'collection.filterOwned': 'Owned',
+  'collection.filterTrade': 'For trade',
+  'collection.filterNeeded': '★ needed',
+  'collection.filterHideUnknown': 'Hide ?',
+  'collection.reset': 'Reset',
+  'collection.count': '{n} cards',
+  'collection.empty': 'Nothing found.',
+
+  'cardPicker.empty': 'Nothing found',
+  'collection.qtyDown': 'Decrease',
+  'collection.qtyUp': 'Increase',
+
+  'wishlist.title': 'Needed cards',
+  'wishlist.lead':
+    'Cards at ×0, marked ★, and missing a spare for a potential trade. Missing: {n}. Accounts are in ⚙.',
+  'wishlist.search': 'Search needed…',
+  'wishlist.filterAll': 'All needed',
+  'wishlist.filterMissing': 'Only ×0',
+  'wishlist.filterAccount': 'Needed by {name} ({n})',
+  'wishlist.empty': 'Empty — mark needed cards in the collection or set qty to 0.',
+
+  'trends.title': 'Trends',
+  'trends.lead':
+    'Based on history and archive{count}. More records make a clearer picture.',
+  'trends.leadCount': ' ({n})',
+  'trends.empty': 'No data yet.',
+  'trends.givenTitle': 'Most often given',
+  'trends.givenHint': 'Cards leaving in trades',
+  'trends.receivedTitle': 'Most often received',
+  'trends.receivedHint': 'Cards most often requested',
+
+  'templates.summary': 'Templates',
+  'templates.hint':
+    'LF (needed) — same as Needed tab; LF (×0) — missing only; FT — free duplicates without reserved.',
+  'templates.splitByStars': 'Split by stars',
+  'templates.excludeGold': 'Exclude gold cards',
+  'templates.preview': 'Preview',
+  'templates.lfNeededFt': 'LF (needed) + FT',
+  'templates.lfNeededFtHint': 'Full Needed list + duplicates',
+  'templates.lfMissingFt': 'LF (×0) + FT',
+  'templates.lfMissingFtHint': 'Missing cards only + duplicates',
+  'templates.lfNeeded': 'Looking for (needed)',
+  'templates.lfNeededHint': '×0, ★ and “for trade”',
+  'templates.lfMissing': 'Looking for (×0)',
+  'templates.lfMissingHint': 'Cards with quantity 0 only',
+  'templates.ft': 'For trade',
+  'templates.ftHint': 'Free duplicates',
+  'templates.lookingFor': 'Looking for',
+  'templates.forTrade': 'For trade',
+
+  'trades.title': 'Trades',
+  'trades.potential': 'Potential trades',
+  'trades.potentialHelpAria': 'Potential trades help',
+  'trades.potentialHelp':
+    'You can plan giving a card without a spare — it turns red. With a spare it is marked reserved.',
+  'trades.plan': 'Plan',
+  'trades.editingPotential': 'Editing potential trade',
+  'trades.give': 'Giving',
+  'trades.want': 'Want',
+  'trades.wantOptional': 'Want (optional)',
+  'trades.receiveUnset': 'not set',
+  'trades.confirmNeedsReceive': 'Pick a receive card to mark trade complete',
+  'trades.partnerOptional': 'Player name (optional)',
+  'trades.partnerPh': 'Name',
+  'trades.noCopyWarn':
+    'No spare for trade — the card will be red in the list.',
+  'trades.savePotential': 'Save potential',
+  'trades.saveChanges': 'Save changes',
+  'trades.potentialEmpty': 'No potential trades.',
+  'trades.edit': 'Edit',
+  'trades.completed': 'Completed',
+  'trades.confirmCompleted': 'Mark this trade as completed?',
+  'trades.archive': 'Archive',
+  'trades.confirmArchive':
+    'Send to archive? Trade did not happen — collection stays unchanged.',
+  'trades.confirmRemovePotential': 'Remove this potential trade?',
+  'trades.saveFail': 'Could not save',
+  'trades.notInCollection': ' · not owned',
+  'trades.noDuplicate': ' · no spare',
+  'trades.history': 'Trade history',
+  'trades.filterAll': 'All',
+  'trades.filterMine': 'Mine',
+  'trades.filterArchive': 'Archive',
+  'trades.filterAria': 'History filter',
+  'trades.newTrade': 'New trade',
+  'trades.modeMine': 'My trade',
+  'trades.modeArchive': 'To archive (for trends)',
+  'trades.modeAria': 'Record type',
+  'trades.archiveInfo':
+    'Observed trade: collection unchanged, record counts toward trends.',
+  'trades.gave': 'Gave',
+  'trades.got': 'Got',
+  'trades.giveDup': 'Giving (duplicate)',
+  'trades.receive': 'Receiving',
+  'trades.partnerLabel': 'Partner (optional)',
+  'trades.partnerPlayer': 'Player name',
+  'trades.notePh': 'Comment',
+  'trades.noTradeable':
+    'No duplicates for trade — mark extras in the collection first.',
+  'trades.saveTrade': 'Save trade',
+  'trades.toArchive': 'To archive',
+  'trades.historyEmpty': 'No trades yet.',
+  'trades.historyFilterEmpty': 'No records in this filter.',
+  'trades.badgeArchive': 'archive',
+  'trades.badgeCancelled': 'didn’t happen',
+  'trades.confirmDeleteHistory': 'Delete this trade history record?',
+  'trades.chip.missing': 'no copy for trade',
+  'trades.chip.gold': 'gold',
+  'trades.chip.blue': 'blue',
+  'trades.chip.none': ' · none',
+  'trades.chip.owned': 'You have: {n}',
+}
+
+const DICTS: Record<Locale, Dict> = { ru, en }
+
+export type MessageKey = keyof typeof ru
+
+export type TranslateFn = (key: MessageKey, vars?: Record<string, string | number>) => string
+
+export function createTranslator(locale: Locale): TranslateFn {
+  const dict = DICTS[locale]
+  const fallback = DICTS.ru
+  return (key, vars) => {
+    let text = dict[key] ?? fallback[key] ?? String(key)
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        text = text.replaceAll(`{${k}}`, String(v))
+      }
+    }
+    return text
+  }
+}
