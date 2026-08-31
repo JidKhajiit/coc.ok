@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CARDS, rarityLabel } from '../data/cards'
 import type { Card, Rarity } from '../types'
-import { useI18n, type MessageKey } from '../i18n'
+import { createTranslator, useI18n, type Locale, type MessageKey } from '../i18n'
 
 interface Props {
   owned: Record<string, number>
@@ -119,14 +119,18 @@ export function TradeTemplates({
   reservedByCard,
   tradeNeedCardIds,
 }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [copiedId, setCopiedId] = useState<TemplateId | null>(null)
   const [previewId, setPreviewId] = useState<TemplateId>('lf-needed-ft')
   const [splitByStars, setSplitByStars] = useState(false)
   const [excludeGold, setExcludeGold] = useState(true)
+  const [templateUseEn, setTemplateUseEn] = useState(false)
 
-  const lookingFor = t('templates.lookingFor')
-  const forTradeLabel = t('templates.forTrade')
+  const templateLocale: Locale = templateUseEn ? 'en' : locale
+  const tTemplate = useMemo(() => createTranslator(templateLocale), [templateLocale])
+  const lookingFor = tTemplate('templates.lookingFor')
+  const forTradeLabel = tTemplate('templates.forTrade')
+  const uiLangLabel = locale.toUpperCase()
 
   const { neededCards, missingCards, forTrade } = useMemo(() => {
     const neededCards: Card[] = []
@@ -193,6 +197,25 @@ export function TradeTemplates({
         <p className="trade-templates__hint">{t('templates.hint')}</p>
 
         <div className="trade-templates__opts">
+          <div className="trade-templates__lang">
+            <span className="trade-templates__lang-label">{t('templates.lang')}</span>
+            <div className="seg" role="group" aria-label={t('templates.langAria')}>
+              <button
+                type="button"
+                className={`seg__btn ${!templateUseEn ? 'is-active' : ''}`}
+                onClick={() => setTemplateUseEn(false)}
+              >
+                {uiLangLabel}
+              </button>
+              <button
+                type="button"
+                className={`seg__btn ${templateUseEn ? 'is-active' : ''}`}
+                onClick={() => setTemplateUseEn(true)}
+              >
+                EN
+              </button>
+            </div>
+          </div>
           <label className="check">
             <input
               type="checkbox"

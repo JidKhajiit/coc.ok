@@ -15,7 +15,7 @@ interface Props {
   reservedByCard: Record<string, number>
   onAdd: (input: {
     givenCardId: string
-    receivedCardId: string
+    receivedCardId?: string
     partner?: string
     note?: string
     source?: TradeSource
@@ -109,6 +109,8 @@ function tradeSourceLabel(source: TradeSource, t: TranslateFn): string | null {
   return null
 }
 
+const HISTORY_PAGE_SIZE = 5
+
 export function TradesView({
   owned,
   trades,
@@ -129,7 +131,8 @@ export function TradesView({
   const [note, setNote] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [historyMode, setHistoryMode] = useState<'completed' | 'observed'>('completed')
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'mine' | 'archive'>('all')
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'mine' | 'archive'>('mine')
+  const [historyPage, setHistoryPage] = useState(0)
 
   const [pGivenId, setPGivenId] = useState('')
   const [pReceivedId, setPReceivedId] = useState('')
@@ -154,6 +157,14 @@ export function TradesView({
     }
     return trades.filter((t) => tradeSourceOf(t) !== 'completed')
   }, [trades, historyFilter])
+
+  const historyTotalPages = Math.max(1, Math.ceil(filteredTrades.length / HISTORY_PAGE_SIZE))
+  const historySafePage = Math.min(historyPage, historyTotalPages - 1)
+
+  const paginatedTrades = useMemo(() => {
+    const start = historySafePage * HISTORY_PAGE_SIZE
+    return filteredTrades.slice(start, start + HISTORY_PAGE_SIZE)
+  }, [filteredTrades, historySafePage])
 
   const isArchiveForm = historyMode === 'observed'
   const givenOptions = isArchiveForm ? allCards : tradeable
@@ -223,10 +234,10 @@ export function TradesView({
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (!givenId || !receivedId || givenId === receivedId) return
+    if (!givenId || (!!receivedId && givenId === receivedId)) return
     onAdd({
       givenCardId: givenId,
-      receivedCardId: receivedId,
+      receivedCardId: receivedId || undefined,
       partner: partner.trim() || undefined,
       note: note.trim() || undefined,
       source: historyMode,
@@ -376,7 +387,6 @@ export function TradesView({
               if (!g) return null
               const r = trade.receivedCardId ? CARD_BY_ID[trade.receivedCardId] : undefined
               const missing = !canGiveAway(owned[trade.givenCardId] ?? 0)
-              const canComplete = Boolean(trade.receivedCardId)
               return (
                 <li key={trade.id} className="trade-row trade-row--potential">
                   <div className="trade-row__body">
@@ -414,18 +424,13 @@ export function TradesView({
                     <button
                       type="button"
                       className="icon-btn icon-btn--ok"
-                      disabled={!canComplete}
                       onClick={() => {
                         if (window.confirm(t('trades.confirmCompleted'))) {
                           onConfirmPotential(trade.id)
                         }
                       }}
-                      title={
-                        canComplete ? t('trades.completed') : t('trades.confirmNeedsReceive')
-                      }
-                      aria-label={
-                        canComplete ? t('trades.completed') : t('trades.confirmNeedsReceive')
-                      }
+                      title={t('trades.completed')}
+                      aria-label={t('trades.completed')}
                     >
                       ✓
                     </button>
@@ -481,9 +486,10 @@ export function TradesView({
             <select
               className="select select--compact"
               value={historyFilter}
-              onChange={(e) =>
+              onChange={(e) => {
                 setHistoryFilter(e.target.value as 'all' | 'mine' | 'archive')
-              }
+                setHistoryPage(0)
+              }}
               aria-label={t('trades.filterAria')}
             >
               <option value="all">{t('trades.filterAll')}</option>
@@ -539,13 +545,12 @@ export function TradesView({
             </label>
 
             <label>
-              {isArchiveForm ? t('trades.got') : t('trades.receive')}
+              {isArchiveForm ? t('trades.gotOptional') : t('trades.receiveOptional')}
               <CardPicker
                 value={receivedId}
                 onChange={setReceivedId}
                 cards={allCards}
                 formatOption={formatHistoryReceived}
-                required
               />
             </label>
 
@@ -576,7 +581,7 @@ export function TradesView({
             <button
               type="submit"
               className="btn btn--primary"
-              disabled={!givenId || !receivedId || givenId === receivedId}
+              disabled={!givenId || (!!receivedId && givenId === receivedId)}
             >
               {isArchiveForm ? t('trades.toArchive') : t('trades.saveTrade')}
             </button>
@@ -588,8 +593,9 @@ export function TradesView({
             {trades.length === 0 ? t('trades.historyEmpty') : t('trades.historyFilterEmpty')}
           </p>
         ) : (
-          <ul className="trade-list">
-            {filteredTrades.map((trade) => {
+          <>
+            <ul className="trade-list">
+              {paginatedTrades.map((trade) => {
               const g = CARD_BY_ID[trade.givenCardId]
               if (!g) return null
               const r = trade.receivedCardId ? CARD_BY_ID[trade.receivedCardId] : undefined
@@ -659,7 +665,40 @@ export function TradesView({
                 </li>
               )
             })}
-          </ul>
+            </ul>
+
+            {filteredTrades.length > HISTORY_PAGE_SIZE && (
+              <nav
+                className="trade-history-pager"
+                aria-label={t('trades.historyPagerAria')}
+              >
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={historySafePage <= 0}
+                  onClick={() => setHistoryPage((p) => Math.max(0, p - 1))}
+                >
+                  {t('trades.historyPrev')}
+                </button>
+                <span className="trade-history-pager__info">
+                  {t('trades.historyPage', {
+                    page: historySafePage + 1,
+                    total: historyTotalPages,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={historySafePage >= historyTotalPages - 1}
+                  onClick={() =>
+                    setHistoryPage((p) => Math.min(historyTotalPages - 1, p + 1))
+                  }
+                >
+                  {t('trades.historyNext')}
+                </button>
+              </nav>
+            )}
+          </>
         )}
       </div>
     </section>

@@ -533,6 +533,34 @@ select {
   gap: 10px 14px;
 }
 
+.trade-templates__lang {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.trade-templates__lang-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.trade-history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 8px;
+}
+
+.trade-history-pager__info {
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 9rem;
+  text-align: center;
+}
+
 .trade-templates__list {
   list-style: none;
   margin: 0;

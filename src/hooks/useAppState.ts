@@ -10,6 +10,7 @@ import type {
 } from '../types'
 import { DEFAULT_ACCOUNTS, SOLO_ACCOUNT_ID } from '../types'
 import { normalizeLocale, type Locale } from '../i18n'
+import { isSameGameDay } from '../utils/gameDay'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
 
@@ -17,15 +18,6 @@ function normalizeTradeSource(source: unknown): TradeSource {
   return TRADE_SOURCES.includes(source as TradeSource)
     ? (source as TradeSource)
     : 'completed'
-}
-
-function isSameLocalDay(iso: string, now = new Date()): boolean {
-  const date = new Date(iso)
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  )
 }
 
 const STORAGE_KEY = 'coc-card-trades-v1'
@@ -293,13 +285,14 @@ export function useAppState() {
 
   const addTrade = useCallback(
     (input: Omit<TradeRecord, 'id' | 'createdAt'> & { createdAt?: string }) => {
-      if (!input.receivedCardId) return
+      const receivedCardId = input.receivedCardId?.trim() || undefined
+      if (receivedCardId && input.givenCardId === receivedCardId) return
 
       const source = normalizeTradeSource(input.source)
       const trade: TradeRecord = {
         id: uid(),
         givenCardId: input.givenCardId,
-        receivedCardId: input.receivedCardId,
+        receivedCardId,
         partner: input.partner,
         note: input.note,
         createdAt: input.createdAt ?? new Date().toISOString(),
@@ -320,7 +313,9 @@ export function useAppState() {
           if (givenQty <= 1) delete owned[trade.givenCardId]
           else owned[trade.givenCardId] = givenQty - 1
         }
-        owned[trade.receivedCardId] = (owned[trade.receivedCardId] ?? 0) + 1
+        if (trade.receivedCardId) {
+          owned[trade.receivedCardId] = (owned[trade.receivedCardId] ?? 0) + 1
+        }
 
         return {
           ...prev,
@@ -408,7 +403,7 @@ export function useAppState() {
   const confirmPotentialTrade = useCallback((id: string) => {
     setState((prev) => {
       const potential = prev.potentialTrades.find((t) => t.id === id)
-      if (!potential || !potential.receivedCardId) return prev
+      if (!potential) return prev
 
       const owned = { ...prev.owned }
       const givenQty = owned[potential.givenCardId] ?? 0
@@ -416,7 +411,10 @@ export function useAppState() {
         if (givenQty <= 1) delete owned[potential.givenCardId]
         else owned[potential.givenCardId] = givenQty - 1
       }
-      owned[potential.receivedCardId] = (owned[potential.receivedCardId] ?? 0) + 1
+      if (potential.receivedCardId) {
+        owned[potential.receivedCardId] =
+          (owned[potential.receivedCardId] ?? 0) + 1
+      }
 
       const trade: TradeRecord = {
         id: uid(),
@@ -533,7 +531,7 @@ export function useAppState() {
       const source = normalizeTradeSource(t.source)
       if (source === 'completed') {
         completedCount += 1
-        if (isSameLocalDay(t.createdAt)) tradesToday += 1
+        if (isSameGameDay(t.createdAt)) tradesToday += 1
       } else archiveCount += 1
     }
     return {
