@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useOutletContext } from 'react-router-dom'
 import { CARDS } from '../data/cards'
 import { useAppState } from '../hooks/useAppState'
+import { writeStoredLocale } from '../hooks/usePersistedLocale'
 import { CollectionView } from '../components/CollectionView'
 import { WishlistView } from '../components/WishlistView'
 import { TradesView } from '../components/TradesView'
 import { TrendsView } from '../components/TrendsView'
-import { SettingsModal } from '../components/SettingsModal'
-import { I18nProvider, localeTag, normalizeLocale, useI18n, type MessageKey } from '../i18n'
+import { AppToolbar } from '../components/settings/AppToolbar'
+import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSettingsDrawer'
+import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
 import { BRAND_NAME } from '../brand'
 import { DAILY_BONUS_TRADE_LIMIT, type TabId } from '../types'
@@ -24,10 +26,18 @@ const SAVE_TOAST_MS = 3000
 
 function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
   const { user, logout } = useOutletContext<AuthOutletContext>()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [eventSettingsOpen, setEventSettingsOpen] = useState(false)
   const [saveToast, setSaveToast] = useState<string | null>(null)
   const wasSavingRef = useRef(false)
-  const { t, locale } = useI18n()
+  const { t, locale, setLocale } = useI18n()
+
+  useEffect(() => {
+    writeStoredLocale(normalizeLocale(app.state.locale))
+  }, [app.state.locale])
+
+  const handleLocaleChange = (next: Locale) => {
+    setLocale(next)
+  }
 
   useEffect(() => {
     if (app.saving) {
@@ -51,6 +61,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
   }, [app.saving, app.saveError, app.lastSaved, t])
 
   const tradesToday = app.stats.tradesToday
+  const collectionPercent = Math.round((app.stats.uniqueOwned / CARDS.length) * 100)
   const tradesGoalClass =
     tradesToday >= DAILY_BONUS_TRADE_LIMIT
       ? tradesToday > DAILY_BONUS_TRADE_LIMIT
@@ -62,20 +73,13 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
     <div className="app">
       <div className="atmosphere" aria-hidden />
 
-      <div className="settings-trigger">
-        <span className="settings-trigger__user" title={user.username}>
-          {user.username}
-        </span>
-        <button
-          type="button"
-          className="settings-gear"
-          onClick={() => setSettingsOpen(true)}
-          aria-label={t('app.settings')}
-          title={t('app.settings')}
-        >
-          ⚙
-        </button>
-      </div>
+      <AppToolbar
+        username={user.username}
+        onLogout={logout}
+        locale={locale}
+        onLocaleChange={handleLocaleChange}
+        onEventSettings={() => setEventSettingsOpen(true)}
+      />
 
       {saveToast && (
         <div className="save-toast" role="status" aria-live="polite">
@@ -83,14 +87,11 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         </div>
       )}
 
-      <SettingsModal
-        open={settingsOpen}
+      <CardTradesSettingsDrawer
+        open={eventSettingsOpen}
         username={user.username}
-        onLogout={logout}
+        onClose={() => setEventSettingsOpen(false)}
         accounts={app.state.accounts}
-        locale={locale}
-        onLocaleChange={app.setLocale}
-        onClose={() => setSettingsOpen(false)}
         onAdd={() => app.addAccount()}
         onRemove={app.removeAccount}
         onRename={app.renameAccount}
@@ -110,9 +111,21 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
             <p className="hero__lead">{t('app.heroLead')}</p>
 
             <div className="hero__stats">
-              <div className="stat">
-                <strong>{app.stats.uniqueOwned}</strong>
-                <span>{t('app.stat.ofCards', { n: CARDS.length })}</span>
+              <div
+                className="stat"
+                aria-label={t('app.stat.collectionAria', {
+                  percent: collectionPercent,
+                  owned: app.stats.uniqueOwned,
+                  total: CARDS.length,
+                })}
+              >
+                <strong>{collectionPercent}%</strong>
+                <span>
+                  {t('app.stat.collectionDetail', {
+                    owned: app.stats.uniqueOwned,
+                    total: CARDS.length,
+                  })}
+                </span>
               </div>
               <div className="stat">
                 <strong>{app.stats.tradeable}</strong>
@@ -254,12 +267,20 @@ export function CardTradesPage() {
   const app = useAppState()
   const locale = normalizeLocale(app.state.locale)
 
+  const setLocale = useCallback(
+    (next: Locale) => {
+      writeStoredLocale(next)
+      app.setLocale(next)
+    },
+    [app.setLocale],
+  )
+
   useEffect(() => {
     document.documentElement.lang = localeTag(locale)
   }, [locale])
 
   return (
-    <I18nProvider locale={locale} setLocale={app.setLocale}>
+    <I18nProvider locale={locale} setLocale={setLocale}>
       <CardTradesShell app={app} />
     </I18nProvider>
   )

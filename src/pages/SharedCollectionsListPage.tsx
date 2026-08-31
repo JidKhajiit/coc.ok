@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as api from '../api/client'
 import type { PublicCollectionSummary } from '../api/client'
-import { I18nProvider, useI18n } from '../i18n'
+import { PublicAppShell } from '../components/PublicAppShell'
+import { useI18n } from '../i18n'
 import { CARDS } from '../data/cards'
 import { BRAND_NAME } from '../brand'
 import '../App.css'
@@ -41,11 +42,6 @@ function SharedCollectionsList() {
         <p className="hero__brand">{BRAND_NAME}</p>
         <h1 className="hero__title">{t('share.collectionsTitle')}</h1>
         <p className="hero__lead">{t('share.collectionsLead')}</p>
-        <p className="hero__links">
-          <Link to="/card-trades" className="hero__link">
-            {t('share.backToApp')}
-          </Link>
-        </p>
       </header>
 
       <main className="main">
@@ -79,8 +75,8 @@ function SharedCollectionsList() {
 
 export function SharedCollectionsListPage() {
   return (
-    <I18nProvider locale="ru" setLocale={() => {}}>
+    <PublicAppShell>
       <SharedCollectionsList />
-    </I18nProvider>
+    </PublicAppShell>
   )
 }

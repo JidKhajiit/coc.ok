@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import * as api from '../api/client'
 import { BRAND_NAME } from '../brand'
 import { AuthMessage, PasswordField } from '../components/PasswordField'
-import { I18nProvider, useI18n } from '../i18n'
+import { useI18n } from '../i18n'
+import { PublicAppShell } from '../components/PublicAppShell'
 import '../App.css'
 
 function VerifyEmailContent() {
@@ -130,16 +131,16 @@ function ResetPasswordContent() {
 
 export function VerifyEmailPage() {
   return (
-    <I18nProvider locale="ru" setLocale={() => {}}>
+    <PublicAppShell>
       <VerifyEmailContent />
-    </I18nProvider>
+    </PublicAppShell>
   )
 }
 
 export function ResetPasswordPage() {
   return (
-    <I18nProvider locale="ru" setLocale={() => {}}>
+    <PublicAppShell>
       <ResetPasswordContent />
-    </I18nProvider>
+    </PublicAppShell>
   )
 }

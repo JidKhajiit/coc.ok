@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { AuthPage } from './AuthPage'
-import { I18nProvider } from '../i18n'
+import { PublicAppShell } from './PublicAppShell'
 
 export function RequireAuth() {
   const auth = useAuth()
@@ -17,7 +17,7 @@ export function RequireAuth() {
 
   if (!auth.user) {
     return (
-      <I18nProvider locale="ru" setLocale={() => {}}>
+      <PublicAppShell>
         <AuthPage
           onLogin={auth.login}
           onRegister={auth.register}
@@ -28,7 +28,7 @@ export function RequireAuth() {
           onClearError={() => auth.setError(null)}
           onClearInfo={() => auth.setInfo(null)}
         />
-      </I18nProvider>
+      </PublicAppShell>
     )
   }
 

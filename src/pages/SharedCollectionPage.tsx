@@ -58,11 +58,14 @@ export function SharedCollectionLayout() {
         <main className="main">
           <section className="panel">
             <p className="panel__error">{t('share.collectionNotFound')}</p>
-            <p className="hero__links">
-              <Link to="/card-trades/collections" className="hero__link">
+            <div className="panel__actions">
+              <Link to="/card-trades/collections" className="btn btn--ghost btn--sm">
                 {t('share.allCollections')}
               </Link>
-            </p>
+              <Link to="/card-trades" className="btn btn--primary btn--sm">
+                {t('auth.login')}
+              </Link>
+            </div>
           </section>
         </main>
       </div>
@@ -76,19 +79,8 @@ export function SharedCollectionLayout() {
 
         <header className="hero hero--compact">
           <p className="hero__brand">{BRAND_NAME}</p>
-          <h1 className="hero__title">
-            {t('share.playerCollection', { name: collection.username })}
-          </h1>
+          <h1 className="hero__title hero__title--name">{collection.username}</h1>
           <p className="hero__lead">{t('share.publicCollectionLead')}</p>
-          <p className="hero__links">
-            <Link to="/card-trades/collections" className="hero__link">
-              {t('share.allCollections')}
-            </Link>
-            <span className="hero__link-sep">·</span>
-            <Link to="/card-trades" className="hero__link">
-              {t('share.backToApp')}
-            </Link>
-          </p>
         </header>
 
         <nav className="tabs" aria-label={t('app.tabs')}>

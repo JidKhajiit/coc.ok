@@ -183,8 +183,10 @@ export function CollectionView({
     <section className="panel">
       <header className="panel__head">
         <div>
-          <p className="panel__greeting">{t('collection.greeting', { name: username })}</p>
-          <h2>{t('collection.title')}</h2>
+          <p className="panel__eyebrow">{t('collection.title')}</p>
+          <h2 className="panel__title">
+            <span className="panel__username">{username}</span>
+          </h2>
         </div>
       </header>
 

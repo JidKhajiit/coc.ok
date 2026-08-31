@@ -14,7 +14,7 @@ import {
 } from './pages/SharedCollectionPage'
 import { SharedCollectionsListPage } from './pages/SharedCollectionsListPage'
 import { VerifyEmailPage, ResetPasswordPage } from './pages/AuthEmailPages'
-import { I18nProvider } from './i18n'
+import { PublicAppShell } from './components/PublicAppShell'
 
 export default function App() {
   return (
@@ -28,9 +28,9 @@ export default function App() {
       <Route
         path="/card-trades/collections/:slug"
         element={
-          <I18nProvider locale="ru" setLocale={() => {}}>
+          <PublicAppShell>
             <SharedCollectionLayout />
-          </I18nProvider>
+          </PublicAppShell>
         }
       >
         <Route index element={<SharedCollectionCollectionTab />} />

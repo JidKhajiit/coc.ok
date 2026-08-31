@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   CARD_BY_ID,
   CARDS,
@@ -141,6 +141,17 @@ export function TradesView({
   const [potentialFormOpen, setPotentialFormOpen] = useState(false)
   const [editingPotentialId, setEditingPotentialId] = useState<string | null>(null)
   const [potentialError, setPotentialError] = useState('')
+  const potentialFormRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    if (!potentialFormOpen || !editingPotentialId) return
+    const el = potentialFormRef.current
+    if (!el) return
+    const frame = requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [potentialFormOpen, editingPotentialId])
 
   const tradeable = useMemo(
     () =>
@@ -306,7 +317,11 @@ export function TradesView({
         </div>
 
         {potentialFormOpen && (
-          <form className="trade-form" onSubmit={submitPotential}>
+          <form
+            ref={potentialFormRef}
+            className="trade-form trade-form--potential"
+            onSubmit={submitPotential}
+          >
             {editingPotentialId && (
               <p className="form-info">{t('trades.editingPotential')}</p>
             )}
