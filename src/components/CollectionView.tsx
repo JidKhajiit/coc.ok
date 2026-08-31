@@ -10,16 +10,18 @@ import { TradeTemplates } from './TradeTemplates'
 type SortMode = 'number' | 'rarity-asc' | 'rarity-desc'
 
 interface Props {
+  username: string
   owned: Record<string, number>
   accounts: Account[]
   neededBy: Record<string, string[]>
   reservedByCard: Record<string, number>
   reservedPartners: Record<string, string[]>
   tradeNeedCardIds: Set<string>
-  onAdjust: (cardId: string, delta: number) => void
-  onToggleNeeded: (cardId: string, accountId: string) => void
-  onSetNeededForAll: (cardId: string, needed: boolean) => void
-  onToggleStar: (cardId: string) => void
+  readOnly?: boolean
+  onAdjust?: (cardId: string, delta: number) => void
+  onToggleNeeded?: (cardId: string, accountId: string) => void
+  onSetNeededForAll?: (cardId: string, needed: boolean) => void
+  onToggleStar?: (cardId: string) => void
 }
 
 function compareCards(a: Card, b: Card, sort: SortMode): number {
@@ -29,12 +31,14 @@ function compareCards(a: Card, b: Card, sort: SortMode): number {
 }
 
 export function CollectionView({
+  username,
   owned,
   accounts,
   neededBy,
   reservedByCard,
   reservedPartners,
   tradeNeedCardIds,
+  readOnly = false,
   onAdjust,
   onToggleNeeded,
   onSetNeededForAll,
@@ -121,11 +125,12 @@ export function CollectionView({
         dimmed={qty === 0}
         showSet={sort !== 'number'}
         actions={
+          readOnly ? undefined : (
           <>
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={() => onAdjust(c.id, -1)}
+              onClick={() => onAdjust?.(c.id, -1)}
               disabled={qty === 0}
               aria-label={t('collection.qtyDown')}
             >
@@ -134,7 +139,7 @@ export function CollectionView({
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={() => onAdjust(c.id, 1)}
+              onClick={() => onAdjust?.(c.id, 1)}
               aria-label={t('collection.qtyUp')}
             >
               +
@@ -142,11 +147,12 @@ export function CollectionView({
             <AccountNeedToggles
               accounts={accounts}
               neededAccountIds={needed}
-              onToggle={(accountId) => onToggleNeeded(c.id, accountId)}
-              onToggleAll={() => onSetNeededForAll(c.id, !allOn)}
-              onToggleStar={() => onToggleStar(c.id)}
+              onToggle={(accountId) => onToggleNeeded?.(c.id, accountId)}
+              onToggleAll={() => onSetNeededForAll?.(c.id, !allOn)}
+              onToggleStar={() => onToggleStar?.(c.id)}
             />
           </>
+          )
         }
       />
     )
@@ -177,16 +183,19 @@ export function CollectionView({
     <section className="panel">
       <header className="panel__head">
         <div>
+          <p className="panel__greeting">{t('collection.greeting', { name: username })}</p>
           <h2>{t('collection.title')}</h2>
         </div>
       </header>
 
-      <TradeTemplates
-        owned={owned}
-        neededBy={neededBy}
-        reservedByCard={reservedByCard}
-        tradeNeedCardIds={tradeNeedCardIds}
-      />
+      {!readOnly && (
+        <TradeTemplates
+          owned={owned}
+          neededBy={neededBy}
+          reservedByCard={reservedByCard}
+          tradeNeedCardIds={tradeNeedCardIds}
+        />
+      )}
 
       <div className="toolbar">
         <div className="toolbar__row">

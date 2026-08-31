@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CARDS, migrateCardId } from '../data/cards'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { migrateState, isEmptyState } from '../../shared/migrateState'
+import { EMPTY_STATE } from '../../shared/types'
+import { CARDS } from '../data/cards'
 import type {
   Account,
   AppState,
@@ -8,9 +10,10 @@ import type {
   TradeSource,
   TrendItem,
 } from '../types'
-import { DEFAULT_ACCOUNTS, SOLO_ACCOUNT_ID } from '../types'
+import { SOLO_ACCOUNT_ID } from '../types'
 import { normalizeLocale, type Locale } from '../i18n'
 import { isSameGameDay } from '../utils/gameDay'
+import * as api from '../api/client'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
 
@@ -21,104 +24,24 @@ function normalizeTradeSource(source: unknown): TradeSource {
 }
 
 const STORAGE_KEY = 'coc-card-trades-v1'
+const SAVE_DEBOUNCE_MS = 500
 
-const EMPTY: AppState = {
-  owned: {},
-  neededBy: {},
-  accounts: DEFAULT_ACCOUNTS,
-  trades: [],
-  potentialTrades: [],
-  locale: 'ru',
-}
-
-function migrateTradeLike<T extends { givenCardId: string; receivedCardId?: string }>(
-  items: T[] | undefined,
-): T[] {
-  return (items ?? [])
-    .map((t) => {
-      const givenCardId = migrateCardId(t.givenCardId)
-      if (!givenCardId) return null
-      const receivedRaw = t.receivedCardId
-      const receivedCardId = receivedRaw ? migrateCardId(receivedRaw) ?? undefined : undefined
-      if (receivedRaw && !receivedCardId) return null
-      return { ...t, givenCardId, receivedCardId }
-    })
-    .filter((t): t is T => Boolean(t))
-}
-
-function migrateTrades(items: TradeRecord[] | undefined): TradeRecord[] {
-  return migrateTradeLike(items).map((t) => ({
-    ...t,
-    source: normalizeTradeSource(t.source),
-  }))
-}
-
-function migrateState(parsed: Partial<AppState> & { wishlist?: string[] }): AppState {
-  const owned: Record<string, number> = {}
-  for (const [id, qty] of Object.entries(parsed.owned ?? {})) {
-    const next = migrateCardId(id)
-    if (!next || qty <= 0) continue
-    owned[next] = (owned[next] ?? 0) + qty
-  }
-
-  const accounts: Account[] = Array.isArray(parsed.accounts)
-    ? parsed.accounts
-        .filter((a): a is Account => Boolean(a?.id && String(a.name ?? '').trim()))
-        .map((a) => ({ id: a.id, name: String(a.name).trim() }))
-    : parsed.wishlist?.length
-      ? [
-          { id: 'a1', name: 'Акк 1' },
-          { id: 'a2', name: 'Акк 2' },
-          { id: 'a3', name: 'Акк 3' },
-        ]
-      : DEFAULT_ACCOUNTS
-
-  const accountIds = new Set(accounts.map((a) => a.id))
-  const neededBy: Record<string, string[]> = {}
-
-  for (const [id, accs] of Object.entries(parsed.neededBy ?? {})) {
-    const cardId = migrateCardId(id)
-    if (!cardId || !(accs ?? []).length) continue
-    if (accounts.length === 0) {
-      neededBy[cardId] = [SOLO_ACCOUNT_ID]
-      continue
-    }
-    const list = [...new Set((accs ?? []).filter((a) => accountIds.has(a) || a === SOLO_ACCOUNT_ID))]
-    // solo-метки при появлении аккаунтов оставляем как «нужна первому», если ничего не матчится
-    if (list.length === 0 && (accs ?? []).includes(SOLO_ACCOUNT_ID)) {
-      neededBy[cardId] = [accounts[0]!.id]
-    } else if (list.filter((a) => a !== SOLO_ACCOUNT_ID).length) {
-      neededBy[cardId] = list.filter((a) => a !== SOLO_ACCOUNT_ID)
-    } else if (list.length) {
-      neededBy[cardId] = [accounts[0]!.id]
-    }
-  }
-
-  for (const id of parsed.wishlist ?? []) {
-    const cardId = migrateCardId(id)
-    if (!cardId) continue
-    neededBy[cardId] =
-      accounts.length > 0 ? accounts.map((a) => a.id) : [SOLO_ACCOUNT_ID]
-  }
-
-  return {
-    owned,
-    neededBy,
-    accounts,
-    trades: migrateTrades(parsed.trades),
-    potentialTrades: migrateTradeLike(parsed.potentialTrades),
-    locale: normalizeLocale(parsed.locale),
-  }
-}
-
-function load(): AppState {
+function loadLegacyLocalStorage(): AppState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return EMPTY
+    if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<AppState> & { wishlist?: string[] }
     return migrateState(parsed)
   } catch {
-    return EMPTY
+    return null
+  }
+}
+
+function clearLegacyLocalStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
   }
 }
 
@@ -127,11 +50,81 @@ function uid(): string {
 }
 
 export function useAppState() {
-  const [state, setState] = useState<AppState>(() => load())
+  const [state, setState] = useState<AppState>(EMPTY_STATE)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [lastSaved, setLastSaved] = useState(true)
+  const skipSaveRef = useRef(true)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    let cancelled = false
+
+    async function loadFromServer() {
+      setLoading(true)
+      setSaveError(null)
+      try {
+        let data = await api.getState()
+
+        const legacy = loadLegacyLocalStorage()
+        if (legacy && isEmptyState(data) && !isEmptyState(legacy)) {
+          data = await api.putState(legacy)
+          clearLegacyLocalStorage()
+        }
+
+        if (!cancelled) {
+          setState(data)
+          skipSaveRef.current = true
+          setLastSaved(true)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSaveError(err instanceof Error ? err.message : 'Failed to load data')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void loadFromServer()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (loading) return
+    if (skipSaveRef.current) {
+      skipSaveRef.current = false
+      return
+    }
+
+    setLastSaved(false)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+
+    saveTimerRef.current = setTimeout(() => {
+      setSaving(true)
+      void api
+        .putState(state)
+        .then((saved) => {
+          setState(saved)
+          skipSaveRef.current = true
+          setLastSaved(true)
+          setSaveError(null)
+        })
+        .catch((err) => {
+          setSaveError(err instanceof Error ? err.message : 'Failed to save data')
+        })
+        .finally(() => {
+          setSaving(false)
+        })
+    }, SAVE_DEBOUNCE_MS)
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [state, loading])
 
   const reservedByCard = useMemo(() => {
     const map: Record<string, number> = {}
@@ -606,6 +599,10 @@ export function useAppState() {
 
   return {
     state,
+    loading,
+    saving,
+    saveError,
+    lastSaved,
     setOwned,
     adjustOwned,
     setLocale,

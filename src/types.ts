@@ -71,3 +71,6 @@ export const DEFAULT_ACCOUNTS: Account[] = []
 
 /** Id для режима без списка аккаунтов (одна звезда) */
 export const SOLO_ACCOUNT_ID = 'solo'
+
+/** Лимит обменов в день, дающих бонус */
+export const DAILY_BONUS_TRADE_LIMIT = 20

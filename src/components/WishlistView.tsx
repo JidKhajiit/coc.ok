@@ -11,9 +11,10 @@ interface Props {
   neededBy: Record<string, string[]>
   owned: Record<string, number>
   tradeNeedCardIds: Set<string>
-  onToggleNeeded: (cardId: string, accountId: string) => void
-  onSetNeededForAll: (cardId: string, needed: boolean) => void
-  onToggleStar: (cardId: string) => void
+  readOnly?: boolean
+  onToggleNeeded?: (cardId: string, accountId: string) => void
+  onSetNeededForAll?: (cardId: string, needed: boolean) => void
+  onToggleStar?: (cardId: string) => void
 }
 
 export function WishlistView({
@@ -21,6 +22,7 @@ export function WishlistView({
   neededBy,
   owned,
   tradeNeedCardIds,
+  readOnly = false,
   onToggleNeeded,
   onSetNeededForAll,
   onToggleStar,
@@ -117,6 +119,16 @@ export function WishlistView({
                 qty={qty}
                 dimmed={qty > 0 && needed.length === 0 && !isTradeNeed}
                 actions={
+                  readOnly ? (
+                    <>
+                      {qty === 0 && <span className="pill pill--warn">×0</span>}
+                      {needed.length > 0 && (
+                        <span className="pill pill--need">
+                          {needed.length > 0 ? '★' : ''}
+                        </span>
+                      )}
+                    </>
+                  ) : (
                   <>
                     {qty === 0 && <span className="pill pill--warn">×0</span>}
                     {isTradeNeed && (
@@ -127,11 +139,12 @@ export function WishlistView({
                     <AccountNeedToggles
                       accounts={accounts}
                       neededAccountIds={needed}
-                      onToggle={(accountId) => onToggleNeeded(c.id, accountId)}
-                      onToggleAll={() => onSetNeededForAll(c.id, !allOn)}
-                      onToggleStar={() => onToggleStar(c.id)}
+                      onToggle={(accountId) => onToggleNeeded?.(c.id, accountId)}
+                      onToggleAll={() => onSetNeededForAll?.(c.id, !allOn)}
+                      onToggleStar={() => onToggleStar?.(c.id)}
                     />
                   </>
+                  )
                 }
               />
             )

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import * as api from '../api/client'
 import type { Account } from '../types'
 import { useI18n, type Locale } from '../i18n'
 
 interface Props {
   open: boolean
+  username: string
+  onLogout: () => Promise<void>
   accounts: Account[]
   locale: Locale
   onLocaleChange: (locale: Locale) => void
@@ -20,6 +23,8 @@ interface Props {
 
 export function SettingsModal({
   open,
+  username,
+  onLogout,
   accounts,
   locale,
   onLocaleChange,
@@ -37,6 +42,9 @@ export function SettingsModal({
   const [importMsg, setImportMsg] = useState('')
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
+  const [shareEnabled, setShareEnabled] = useState(false)
+  const [shareSlug, setShareSlug] = useState(username)
+  const [shareMsg, setShareMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -45,7 +53,12 @@ export function SettingsModal({
     setImportMsg('')
     setPasteOpen(false)
     setPasteText('')
-  }, [open, accounts])
+    setShareMsg('')
+    void api.getShareSettings().then((share) => {
+      setShareEnabled(share.enabled)
+      setShareSlug(share.slug)
+    })
+  }, [open, accounts, username])
 
   useEffect(() => {
     if (!open) return
@@ -57,6 +70,8 @@ export function SettingsModal({
   }, [open, onClose])
 
   if (!open) return null
+
+  const shareUrl = `${window.location.origin}/card-trades/collections/${shareSlug}`
 
   return createPortal(
     <div className="settings-overlay" onClick={onClose} role="presentation">
@@ -73,6 +88,65 @@ export function SettingsModal({
             {t('common.close')}
           </button>
         </header>
+
+        <section className="settings-block settings-block--account">
+          <h3>{t('settings.signedInAs')}</h3>
+          <p className="settings-account__name">{username}</p>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => void onLogout()}
+          >
+            {t('auth.logout')}
+          </button>
+        </section>
+
+        <section className="settings-block">
+          <h3>{t('share.settingsTitle')}</h3>
+          <p className="settings-block__hint">{t('share.settingsHint')}</p>
+          <label className="settings-share__toggle">
+            <input
+              type="checkbox"
+              checked={shareEnabled}
+              onChange={async () => {
+                try {
+                  const share = await api.updateShareSettings({
+                    enabled: !shareEnabled,
+                    slug: shareSlug,
+                  })
+                  setShareEnabled(share.enabled)
+                  setShareSlug(share.slug)
+                  setShareMsg(
+                    share.enabled ? t('share.enabledMsg') : t('share.disabledMsg'),
+                  )
+                } catch {
+                  setShareMsg(t('share.saveFail'))
+                }
+              }}
+            />
+            <span>{t('share.enablePublic')}</span>
+          </label>
+          {shareEnabled && (
+            <div className="settings-share__link">
+              <input className="input" readOnly value={shareUrl} />
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(shareUrl)
+                    setShareMsg(t('share.linkCopied'))
+                  } catch {
+                    setShareMsg(t('settings.msg.copyFail'))
+                  }
+                }}
+              >
+                {t('share.copyLink')}
+              </button>
+            </div>
+          )}
+          {shareMsg && <p className="settings-backup__msg">{shareMsg}</p>}
+        </section>
 
         <section className="settings-block">
           <h3>{t('settings.language')}</h3>
