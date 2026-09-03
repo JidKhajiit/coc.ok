@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from './components/RequireAuth'
 import { RequirePermission } from './components/RequirePermission'
+import { HomePage } from './pages/HomePage'
 import {
   CardTradesCollectionTab,
   CardTradesPage,
@@ -21,11 +22,14 @@ import { PublicAppShell } from './components/PublicAppShell'
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/card-trades" replace />} />
+      {/* Home page */}
+      <Route path="/" element={<HomePage />} />
 
+      {/* Auth pages */}
       <Route path="/card-trades/verify-email" element={<VerifyEmailPage />} />
       <Route path="/card-trades/reset-password" element={<ResetPasswordPage />} />
 
+      {/* Public collections */}
       <Route path="/card-trades/collections" element={<SharedCollectionsListPage />} />
       <Route
         path="/card-trades/collections/:slug"
@@ -39,7 +43,8 @@ export default function App() {
         <Route path="needed" element={<SharedCollectionNeededTab />} />
       </Route>
 
-      <Route path="/card-trades" element={<RequireAuth />}>
+      {/* Summer Party event */}
+      <Route path="/card-trades/summer-party" element={<RequireAuth />}>
         <Route element={<CardTradesPage />}>
           <Route index element={<CardTradesCollectionTab />} />
           <Route path="wishlist" element={<CardTradesWishlistTab />} />
@@ -48,6 +53,10 @@ export default function App() {
         </Route>
       </Route>
 
+      {/* Legacy redirect */}
+      <Route path="/card-trades" element={<Navigate to="/card-trades/summer-party" replace />} />
+
+      {/* Admin panel */}
       <Route path="/admin-panel" element={<RequirePermission permission="admin:access" />}>
         <Route element={<AdminPage />}>
           <Route index element={<AdminUsersTab />} />
@@ -56,7 +65,7 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/card-trades" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

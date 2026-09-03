@@ -16,10 +16,10 @@ import { DAILY_BONUS_TRADE_LIMIT, type TabId } from '../types'
 import '../App.css'
 
 const TAB_ROUTES: { id: TabId; path: string }[] = [
-  { id: 'collection', path: '/card-trades' },
-  { id: 'wishlist', path: '/card-trades/wishlist' },
-  { id: 'trades', path: '/card-trades/trades' },
-  { id: 'trends', path: '/card-trades/trends' },
+  { id: 'collection', path: '/card-trades/summer-party' },
+  { id: 'wishlist', path: '/card-trades/summer-party/wishlist' },
+  { id: 'trades', path: '/card-trades/summer-party/trades' },
+  { id: 'trends', path: '/card-trades/summer-party/trends' },
 ]
 
 const SAVE_TOAST_MS = 3000
