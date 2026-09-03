@@ -4,13 +4,14 @@ import { SiteSettingsDrawer } from './SiteSettingsDrawer'
 
 type Props = {
   username?: string
+  permissions?: string[]
   onLogout?: () => Promise<void>
   locale: Locale
   onLocaleChange: (locale: Locale) => void
   onEventSettings?: () => void
 }
 
-export function AppToolbar({ username, onLogout, locale, onLocaleChange, onEventSettings }: Props) {
+export function AppToolbar({ username, permissions, onLogout, locale, onLocaleChange, onEventSettings }: Props) {
   const { t } = useI18n()
   const [siteOpen, setSiteOpen] = useState(false)
   const signedIn = Boolean(username)
@@ -62,6 +63,7 @@ export function AppToolbar({ username, onLogout, locale, onLocaleChange, onEvent
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={username}
+        permissions={permissions}
         onLogout={onLogout}
         locale={locale}
         onLocaleChange={onLocaleChange}

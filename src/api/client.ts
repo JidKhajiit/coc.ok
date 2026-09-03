@@ -41,6 +41,34 @@ export class ApiError extends Error {
 export type AuthUser = {
   id: string
   username: string
+  permissions: string[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AdminUser = {
+  id: string
+  username: string
+  email: string | null
+  emailVerified: boolean
+  createdAt: string
+  roles: Array<{ id: string; name: string }>
+}
+
+export type AdminRole = {
+  id: string
+  name: string
+  description: string | null
+  isSystem: boolean
+  permissions: Array<{ id: string; name: string }>
+}
+
+export type AdminPermission = {
+  id: string
+  name: string
+  description: string | null
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -155,4 +183,90 @@ export async function updateShareSettings(settings: ShareSettings): Promise<Shar
     body: JSON.stringify({ enabled: settings.enabled, slug: settings.slug }),
   })
   return share
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const { users } = await request<{ users: AdminUser[] }>('/api/admin/users')
+  return users
+}
+
+export async function updateUserRoles(userId: string, roleIds: string[]): Promise<void> {
+  await request(`/api/admin/users/${userId}/roles`, {
+    method: 'PUT',
+    body: JSON.stringify({ roleIds }),
+  })
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await request(`/api/admin/users/${userId}`, { method: 'DELETE' })
+}
+
+export async function getAdminRoles(): Promise<AdminRole[]> {
+  const { roles } = await request<{ roles: AdminRole[] }>('/api/admin/roles')
+  return roles
+}
+
+export async function createRole(data: {
+  name: string
+  description?: string
+  permissionIds?: string[]
+}): Promise<{ id: string; name: string }> {
+  const { role } = await request<{ role: { id: string; name: string } }>('/api/admin/roles', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+  return role
+}
+
+export async function updateRole(
+  roleId: string,
+  data: { name?: string; description?: string; permissionIds?: string[] },
+): Promise<void> {
+  await request(`/api/admin/roles/${roleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteRole(roleId: string): Promise<void> {
+  await request(`/api/admin/roles/${roleId}`, { method: 'DELETE' })
+}
+
+export async function getAdminPermissions(): Promise<AdminPermission[]> {
+  const { permissions } = await request<{ permissions: AdminPermission[] }>('/api/admin/permissions')
+  return permissions
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Database Backup
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type DatabaseBackup = {
+  version: number
+  exportedAt: string
+  data: {
+    users: unknown[]
+    userStates: unknown[]
+    roles: unknown[]
+    permissions: unknown[]
+    userRoles: unknown[]
+    rolePermissions: unknown[]
+  }
+}
+
+export async function exportDatabaseBackup(): Promise<DatabaseBackup> {
+  return request<DatabaseBackup>('/api/admin/backup')
+}
+
+export async function importDatabaseBackup(
+  backup: DatabaseBackup,
+): Promise<{ imported: Record<string, number> }> {
+  return request('/api/admin/backup', {
+    method: 'POST',
+    body: JSON.stringify(backup),
+  })
 }

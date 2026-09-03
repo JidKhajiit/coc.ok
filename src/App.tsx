@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from './components/RequireAuth'
+import { RequirePermission } from './components/RequirePermission'
 import {
   CardTradesCollectionTab,
   CardTradesPage,
@@ -7,6 +8,7 @@ import {
   CardTradesTrendsTab,
   CardTradesWishlistTab,
 } from './pages/CardTradesPage'
+import { AdminPage, AdminUsersTab, AdminRolesTab, AdminBackupTab } from './pages/AdminPage'
 import {
   SharedCollectionCollectionTab,
   SharedCollectionLayout,
@@ -43,6 +45,14 @@ export default function App() {
           <Route path="wishlist" element={<CardTradesWishlistTab />} />
           <Route path="trades" element={<CardTradesTradesTab />} />
           <Route path="trends" element={<CardTradesTrendsTab />} />
+        </Route>
+      </Route>
+
+      <Route path="/admin-panel" element={<RequirePermission permission="admin:access" />}>
+        <Route element={<AdminPage />}>
+          <Route index element={<AdminUsersTab />} />
+          <Route path="roles" element={<AdminRolesTab />} />
+          <Route path="backup" element={<AdminBackupTab />} />
         </Route>
       </Route>
 

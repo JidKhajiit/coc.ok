@@ -75,6 +75,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
 
       <AppToolbar
         username={user.username}
+        permissions={user.permissions}
         onLogout={logout}
         locale={locale}
         onLocaleChange={handleLocaleChange}
@@ -191,7 +192,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
 
 export type CardTradesOutletContext = {
   app: ReturnType<typeof useAppState>
-  user: { id: string; username: string }
+  user: { id: string; username: string; permissions: string[] }
 }
 
 export function CardTradesCollectionTab() {

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { LanguagePicker, SettingsDrawer, SettingsSection } from './SettingsDrawer'
 import { useI18n, type Locale } from '../../i18n'
 
@@ -5,6 +6,7 @@ type Props = {
   open: boolean
   onClose: () => void
   username?: string
+  permissions?: string[]
   onLogout?: () => Promise<void>
   locale: Locale
   onLocaleChange: (locale: Locale) => void
@@ -14,12 +16,14 @@ export function SiteSettingsDrawer({
   open,
   onClose,
   username,
+  permissions = [],
   onLogout,
   locale,
   onLocaleChange,
 }: Props) {
   const { t } = useI18n()
   const signedIn = Boolean(username && onLogout)
+  const isAdmin = permissions.includes('admin:access')
 
   return (
     <SettingsDrawer
@@ -45,6 +49,15 @@ export function SiteSettingsDrawer({
               </button>
             </div>
           </div>
+          {isAdmin && (
+            <Link
+              to="/admin-panel"
+              className="btn btn--outline settings-admin-link"
+              onClick={onClose}
+            >
+              ⚙ Админ-панель
+            </Link>
+          )}
         </SettingsSection>
       )}
 

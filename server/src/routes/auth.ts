@@ -4,7 +4,7 @@ import { hash, verify } from '@node-rs/argon2'
 import { and, eq } from 'drizzle-orm'
 import { getCookie } from 'hono/cookie'
 import type { Db } from '../db/index.js'
-import { authTokens, userStates, users } from '../db/schema.js'
+import { authTokens, userStates, users, userRoles, roles } from '../db/schema.js'
 import type { Env } from '../env.js'
 import { passwordResetEmail, verificationEmail } from '../lib/email.js'
 import {
@@ -142,6 +142,12 @@ export function createAuthRoutes(db: Db, env: Env) {
     }
 
     await db.insert(userStates).values({ userId: user.id, data: EMPTY_STATE })
+
+    // Assign default 'user' role
+    const [userRole] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, 'user')).limit(1)
+    if (userRole) {
+      await db.insert(userRoles).values({ userId: user.id, roleId: userRole.id })
+    }
 
     const token = await createAuthToken(db, user.id, 'email_verify')
     await verificationEmail(env, email, token)
@@ -288,7 +294,13 @@ export function createAuthRoutes(db: Db, env: Env) {
     if (!user) {
       return c.json({ user: null })
     }
-    return c.json({ user })
+    return c.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        permissions: user.permissions,
+      },
+    })
   })
 
   return app

@@ -1,6 +1,6 @@
 import { createMiddleware } from 'hono/factory'
 import type { Db } from '../db/index.js'
-import { sessions, users } from '../db/schema.js'
+import { sessions, users, userRoles, rolePermissions, permissions } from '../db/schema.js'
 import { eq, lt } from 'drizzle-orm'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { Env } from '../env.js'
@@ -11,6 +11,7 @@ const SESSION_DAYS = 30
 export type SessionUser = {
   id: string
   username: string
+  permissions: string[]
 }
 
 export type AppVariables = {
@@ -43,7 +44,19 @@ export function createSessionMiddleware(db: Db, env: Env) {
 
       const row = rows[0]
       if (row && row.expiresAt > new Date()) {
-        user = { id: row.userId, username: row.username }
+        // Load user permissions from roles
+        const permRows = await db
+          .selectDistinct({ name: permissions.name })
+          .from(userRoles)
+          .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
+          .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+          .where(eq(userRoles.userId, row.userId))
+
+        user = {
+          id: row.userId,
+          username: row.username,
+          permissions: permRows.map((p) => p.name),
+        }
       } else if (row) {
         await db.delete(sessions).where(eq(sessions.id, sessionId))
         deleteCookie(c, SESSION_COOKIE, cookieOptions(env, false))

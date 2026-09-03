@@ -36,6 +36,6 @@ export function RequireAuth() {
 }
 
 export type AuthOutletContext = {
-  user: { id: string; username: string }
+  user: { id: string; username: string; permissions: string[] }
   logout: () => Promise<void>
 }

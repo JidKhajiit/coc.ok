@@ -12,6 +12,7 @@ import type { AppVariables } from './middleware/session.js'
 import { createAuthRoutes } from './routes/auth.js'
 import { createCollectionsRoutes, createShareRoutes } from './routes/collections.js'
 import { createStateRoutes } from './routes/state.js'
+import { createAdminRoutes } from './routes/admin.js'
 
 const env = loadEnv()
 const { db, client } = createDb(env.DATABASE_URL)
@@ -32,6 +33,7 @@ api.route('/auth', createAuthRoutes(db, env))
 api.route('/state', createStateRoutes(db))
 api.route('/card-trades/collections', createCollectionsRoutes(db))
 api.route('/card-trades/share', createShareRoutes(db))
+api.route('/admin', createAdminRoutes(db))
 app.route('/api', api)
 
 const distPath = resolve(fileURLToPath(new URL('../../../dist', import.meta.url)))
