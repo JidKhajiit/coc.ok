@@ -25,6 +25,7 @@ const ru: Dict = {
   'app.tab.trades': 'Обмены',
   'app.tab.trends': 'Тренды',
   'app.backToHome': 'На главную',
+  'app.backToTracker': 'К трекеру',
   'app.heroTitle': 'Обмен картами без хаоса',
   'app.heroLead':
     'Коллекция, повторы, вишлист и история — всё в одном месте для Clash of Critters.',
@@ -309,6 +310,7 @@ const en: Dict = {
   'app.tab.trades': 'Trades',
   'app.tab.trends': 'Trends',
   'app.backToHome': 'Back to Home',
+  'app.backToTracker': 'Back to Tracker',
   'app.heroTitle': 'Card trades without the chaos',
   'app.heroLead':
     'Collection, duplicates, wishlist and history — all in one place for Clash of Critters.',

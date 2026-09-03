@@ -1,41 +1,71 @@
 import { Link } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { I18nProvider } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
 import { BRAND_NAME } from '../brand'
 import '../App.css'
 
-type Event = {
+type Resource = {
   id: string
-  name: { ru: string; en: string }
-  path: string
-  active: boolean
-  badge?: { ru: string; en: string }
   icon: string
+  title: { ru: string; en: string }
+  desc: { ru: string; en: string }
+  path: string
+  badge?: { ru: string; en: string }
+  disabled?: boolean
 }
 
-const EVENTS: Event[] = [
+const RESOURCES: Resource[] = [
   {
-    id: 'summer-party',
-    name: { ru: 'Летняя вечеринка', en: 'Summer Party' },
-    path: '/card-trades/summer-party',
-    active: true,
-    icon: '🎉',
+    id: 'card-trades',
+    icon: '🃏',
+    title: { ru: 'Трекер обменов', en: 'Card Trades Tracker' },
+    desc: {
+      ru: 'Коллекция, вишлист и история обменов для карточных эвентов.',
+      en: 'Collection, wishlist and trade history for card events.',
+    },
+    path: '/card-trades',
   },
   {
-    id: 'cozy-farm',
-    name: { ru: 'Cozy Farm', en: 'Cozy Farm' },
-    path: '/card-trades/cozy-farm',
-    active: false,
-    badge: { ru: 'в разработке', en: 'coming soon' },
-    icon: '🌾',
+    id: 'guides',
+    icon: '📖',
+    title: { ru: 'Гайды', en: 'Guides' },
+    desc: {
+      ru: 'Руководства для новичков и продвинутые стратегии.',
+      en: 'Beginner guides and advanced strategies.',
+    },
+    path: '/guides',
+    badge: { ru: 'скоро', en: 'soon' },
+    disabled: true,
+  },
+  {
+    id: 'database',
+    icon: '🐾',
+    title: { ru: 'База Татари', en: 'Tatari Database' },
+    desc: {
+      ru: 'Характеристики, эволюции и способности всех существ.',
+      en: 'Stats, evolutions and abilities for all critters.',
+    },
+    path: '/database',
+    badge: { ru: 'скоро', en: 'soon' },
+    disabled: true,
+  },
+  {
+    id: 'tier-list',
+    icon: '📊',
+    title: { ru: 'Тир-лист', en: 'Tier List' },
+    desc: {
+      ru: 'Рейтинг Татари для разных режимов игры.',
+      en: 'Tatari rankings for different game modes.',
+    },
+    path: '/tier-list',
+    badge: { ru: 'скоро', en: 'soon' },
+    disabled: true,
   },
 ]
 
 function HomeContent() {
   const { locale, setLocale } = usePersistedLocale()
-  const auth = useAuth()
   const isRu = locale === 'ru'
 
   return (
@@ -49,91 +79,67 @@ function HomeContent() {
           <h1 className="home-hero__brand">{BRAND_NAME}</h1>
           <p className="home-hero__tagline">
             {isRu
-              ? 'Трекер коллекций и обменов для мини-игр'
-              : 'Collection & trade tracker for mini-games'}
+              ? 'Гайды, тир-листы и трекеры для Clash of Critters'
+              : 'Guides, tier lists & trackers for Clash of Critters'}
           </p>
         </header>
 
-        <section className="home-welcome">
-          <h2>{isRu ? 'Добро пожаловать!' : 'Welcome!'}</h2>
+        <section className="home-intro">
           <p>
             {isRu
-              ? 'Отслеживайте свою коллекцию карт, находите нужные обмены и следите за прогрессом в различных игровых эвентах.'
-              : 'Track your card collection, find trades you need, and monitor your progress across different game events.'}
+              ? 'Всё, что нужно для прокачки ваших Татари: от базовых гайдов до продвинутых стратегий и инструментов отслеживания.'
+              : 'Everything you need to level up your Tatari: from beginner guides to advanced strategies and tracking tools.'}
           </p>
-          {auth.status === 'unauthenticated' && (
-            <p className="home-welcome__cta">
-              {isRu ? (
-                <>
-                  <Link to="/card-trades/summer-party" className="btn btn--primary">
-                    Войти / Регистрация
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link to="/card-trades/summer-party" className="btn btn--primary">
-                    Sign In / Register
-                  </Link>
-                </>
-              )}
-            </p>
-          )}
         </section>
 
-        <section className="home-events">
-          <h2>{isRu ? 'Игровые эвенты' : 'Game Events'}</h2>
-          <div className="home-events__grid">
-            {EVENTS.map((event) => (
+        <section className="home-resources">
+          <h2>{isRu ? 'Ресурсы' : 'Resources'}</h2>
+          <div className="home-resources__grid">
+            {RESOURCES.map((res) => (
               <div
-                key={event.id}
-                className={`home-event-card ${!event.active ? 'home-event-card--disabled' : ''}`}
+                key={res.id}
+                className={`home-resource-card ${res.disabled ? 'home-resource-card--disabled' : ''}`}
               >
-                <span className="home-event-card__icon">{event.icon}</span>
-                <h3 className="home-event-card__name">
-                  {isRu ? event.name.ru : event.name.en}
-                </h3>
-                {event.badge && (
-                  <span className="home-event-card__badge">
-                    {isRu ? event.badge.ru : event.badge.en}
-                  </span>
-                )}
-                {event.active ? (
-                  <Link to={event.path} className="btn btn--primary home-event-card__btn">
-                    {isRu ? 'Открыть' : 'Open'}
-                  </Link>
+                <span className="home-resource-card__icon">{res.icon}</span>
+                <div className="home-resource-card__content">
+                  <h3 className="home-resource-card__title">
+                    {isRu ? res.title.ru : res.title.en}
+                    {res.badge && (
+                      <span className="home-resource-card__badge">
+                        {isRu ? res.badge.ru : res.badge.en}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="home-resource-card__desc">
+                    {isRu ? res.desc.ru : res.desc.en}
+                  </p>
+                </div>
+                {res.disabled ? (
+                  <span className="home-resource-card__arrow">→</span>
                 ) : (
-                  <button className="btn btn--outline home-event-card__btn" disabled>
-                    {isRu ? 'Скоро' : 'Soon'}
-                  </button>
+                  <Link to={res.path} className="home-resource-card__link" aria-label={isRu ? res.title.ru : res.title.en}>
+                    <span className="home-resource-card__arrow">→</span>
+                  </Link>
                 )}
               </div>
             ))}
           </div>
         </section>
 
-        <section className="home-stats">
-          <h2>{isRu ? 'Статистика сайта' : 'Site Stats'}</h2>
-          <div className="home-stats__grid">
-            <div className="home-stat">
-              <span className="home-stat__value">1</span>
-              <span className="home-stat__label">{isRu ? 'Активных эвентов' : 'Active events'}</span>
-            </div>
-            <div className="home-stat">
-              <span className="home-stat__value">48</span>
-              <span className="home-stat__label">{isRu ? 'Карт в коллекции' : 'Cards to collect'}</span>
-            </div>
-            <div className="home-stat">
-              <span className="home-stat__value">∞</span>
-              <span className="home-stat__label">{isRu ? 'Возможных обменов' : 'Possible trades'}</span>
-            </div>
-          </div>
+        <section className="home-about">
+          <h2>{isRu ? 'О проекте' : 'About'}</h2>
+          <p>
+            {isRu
+              ? 'Фанатский проект для сообщества Clash of Critters. Не связан с Lilith Games / Farlight Games.'
+              : 'A fan project for the Clash of Critters community. Not affiliated with Lilith Games / Farlight Games.'}
+          </p>
         </section>
 
         <footer className="home-footer">
           <p>
             {isRu
-              ? 'Создано фанатами для фанатов Clash of Critters'
-              : 'Made by fans for Clash of Critters fans'}
+              ? 'Создано фанатами для фанатов'
+              : 'Made by fans for fans'}
           </p>
         </footer>
       </div>

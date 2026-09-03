@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from './components/RequireAuth'
 import { RequirePermission } from './components/RequirePermission'
 import { HomePage } from './pages/HomePage'
+import { CardTradesHubPage } from './pages/CardTradesHubPage'
 import {
   CardTradesCollectionTab,
   CardTradesPage,
@@ -53,8 +54,8 @@ export default function App() {
         </Route>
       </Route>
 
-      {/* Legacy redirect */}
-      <Route path="/card-trades" element={<Navigate to="/card-trades/summer-party" replace />} />
+      {/* Card Trades hub */}
+      <Route path="/card-trades" element={<CardTradesHubPage />} />
 
       {/* Admin panel */}
       <Route path="/admin-panel" element={<RequirePermission permission="admin:access" />}>
