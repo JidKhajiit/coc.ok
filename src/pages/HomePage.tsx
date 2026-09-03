@@ -5,13 +5,60 @@ import { PublicChrome } from '../components/PublicChrome'
 import { BRAND_NAME } from '../brand'
 import '../App.css'
 
+type Localized = { ru: string; en: string }
+
+type SiteEvent = {
+  id: string
+  name: Localized
+  /** ISO date YYYY-MM-DD */
+  start?: string
+  /** ISO date YYYY-MM-DD */
+  end: string
+  path?: string
+}
+
+/** Текущие события — даты от пользователя, 2026-09-03 */
+const CURRENT_EVENTS: SiteEvent[] = [
+  {
+    id: 'gold-rush-sea-ruffians',
+    name: {
+      ru: 'Турнир Золотой лихорадки: Морские грубины',
+      en: 'Gold Rush Tournament: Sea Ruffians',
+    },
+    start: '2026-09-03',
+    end: '2026-09-08',
+  },
+  {
+    id: 'cozy-farm',
+    name: { ru: 'Уютная ферма', en: 'Cozy Farm' },
+    start: '2026-09-03',
+    end: '2026-09-05',
+  },
+  {
+    id: 'summer-party',
+    name: { ru: 'Летняя вечеринка', en: 'Summer Party' },
+    // «ещё 34 дня» от 3.09.2026 → до 7.10.2026
+    end: '2026-10-07',
+    path: '/card-trades/summer-party',
+  },
+]
+
+const UPCOMING_EVENTS: SiteEvent[] = [
+  {
+    id: 'fishing-race',
+    name: { ru: 'Рыбацкая гонка', en: 'Fishing Race' },
+    start: '2026-09-06',
+    end: '2026-09-08',
+  },
+]
+
 type Resource = {
   id: string
   icon: string
-  title: { ru: string; en: string }
-  desc: { ru: string; en: string }
+  title: Localized
+  desc: Localized
   path: string
-  badge?: { ru: string; en: string }
+  badge?: Localized
   disabled?: boolean
 }
 
@@ -64,13 +111,110 @@ const RESOURCES: Resource[] = [
   },
 ]
 
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function formatDate(iso: string, isRu: boolean): string {
+  const date = parseIsoDate(iso)
+  return date.toLocaleDateString(isRu ? 'ru-RU' : 'en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function formatEventDates(event: SiteEvent, isRu: boolean): string {
+  if (event.start) {
+    return `${formatDate(event.start, isRu)} – ${formatDate(event.end, isRu)}`
+  }
+  return isRu
+    ? `до ${formatDate(event.end, isRu)}`
+    : `until ${formatDate(event.end, isRu)}`
+}
+
+function daysUntil(iso: string): number {
+  const target = parseIsoDate(iso)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  target.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.round((target.getTime() - today.getTime()) / 86_400_000))
+}
+
+function EventList({
+  events,
+  isRu,
+  emptyLabel,
+  mode,
+}: {
+  events: SiteEvent[]
+  isRu: boolean
+  emptyLabel: string
+  mode: 'current' | 'upcoming'
+}) {
+  if (events.length === 0) {
+    return <p className="home-events-list__empty">{emptyLabel}</p>
+  }
+
+  return (
+    <ul className="home-events-list">
+      {events.map((event) => {
+        const countdownIso =
+          mode === 'upcoming' ? (event.start ?? event.end) : event.end
+        const days = daysUntil(countdownIso)
+        const title = isRu ? event.name.ru : event.name.en
+        const relative =
+          days > 0
+            ? mode === 'upcoming'
+              ? isRu
+                ? ` · через ${days} ${daysRu(days)}`
+                : ` · in ${days} day${days === 1 ? '' : 's'}`
+              : isRu
+                ? ` · ещё ${days} ${daysRu(days)}`
+                : ` · ${days} day${days === 1 ? '' : 's'} left`
+            : null
+        const content = (
+          <>
+            <span className="home-events-list__name">{title}</span>
+            <span className="home-events-list__dates">
+              {formatEventDates(event, isRu)}
+              {relative && <span className="home-events-list__left">{relative}</span>}
+            </span>
+          </>
+        )
+
+        return (
+          <li key={event.id} className="home-events-list__item">
+            {event.path ? (
+              <Link to={event.path} className="home-events-list__link">
+                {content}
+              </Link>
+            ) : (
+              content
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function daysRu(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'день'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'дня'
+  return 'дней'
+}
+
 function HomeContent() {
   const { locale, setLocale } = usePersistedLocale()
   const isRu = locale === 'ru'
 
   return (
     <I18nProvider locale={locale} setLocale={setLocale}>
-      <PublicChrome locale={locale} onLocaleChange={setLocale} />
+      <PublicChrome locale={locale} onLocaleChange={setLocale} showCollectionNav={false} />
 
       <div className="app app--home">
         <div className="atmosphere" aria-hidden />
@@ -90,6 +234,27 @@ function HomeContent() {
               ? 'Всё, что нужно для прокачки ваших Татари: от базовых гайдов до продвинутых стратегий и инструментов отслеживания.'
               : 'Everything you need to level up your Tatari: from beginner guides to advanced strategies and tracking tools.'}
           </p>
+        </section>
+
+        <section className="home-schedule">
+          <div className="home-schedule__col">
+            <h2>{isRu ? 'Текущие события' : 'Current Events'}</h2>
+            <EventList
+              events={CURRENT_EVENTS}
+              isRu={isRu}
+              mode="current"
+              emptyLabel={isRu ? 'Сейчас нет активных событий' : 'No active events right now'}
+            />
+          </div>
+          <div className="home-schedule__col">
+            <h2>{isRu ? 'Предстоящие события' : 'Upcoming Events'}</h2>
+            <EventList
+              events={UPCOMING_EVENTS}
+              isRu={isRu}
+              mode="upcoming"
+              emptyLabel={isRu ? 'Пока нет анонсов' : 'No announcements yet'}
+            />
+          </div>
         </section>
 
         <section className="home-resources">
@@ -138,8 +303,8 @@ function HomeContent() {
         <footer className="home-footer">
           <p>
             {isRu
-              ? 'Создано фанатами для фанатов'
-              : 'Made by fans for fans'}
+              ? 'Создано фанатом для фанатов'
+              : 'Made by a fan for fans'}
           </p>
         </footer>
       </div>

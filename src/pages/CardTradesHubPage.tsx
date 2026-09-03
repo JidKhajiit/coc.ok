@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { I18nProvider } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
+import { CARDS, SETS } from '../data/cards'
+import * as api from '../api/client'
 import '../App.css'
 
 type Event = {
@@ -23,28 +26,63 @@ const EVENTS: Event[] = [
     active: true,
     icon: '🎉',
     description: {
-      ru: '48 карт для коллекционирования. Обменивайтесь с другими игроками!',
-      en: '48 cards to collect. Trade with other players!',
+      ru: `${CARDS.length} карт в ${SETS.length} сетах. Обменивайтесь с другими игроками!`,
+      en: `${CARDS.length} cards in ${SETS.length} sets. Trade with other players!`,
     },
   },
   {
-    id: 'cozy-farm',
-    name: { ru: 'Cozy Farm', en: 'Cozy Farm' },
-    path: '/card-trades/cozy-farm',
+    id: 'new-journey',
+    name: { ru: 'New Journey', en: 'New Journey' },
+    path: '/card-trades/new-journey',
     active: false,
-    badge: { ru: 'в разработке', en: 'coming soon' },
-    icon: '🌾',
+    icon: '🚀',
+    badge: { ru: 'архив', en: 'archived' },
     description: {
-      ru: 'Новый набор карт появится в следующем обновлении.',
-      en: 'New card set coming in the next update.',
+      ru: 'Первый карточный эвент. Эвент завершён.',
+      en: 'The first card event. Event ended.',
     },
   },
 ]
+
+function collectionStats(owned: Record<string, number>) {
+  let uniqueOwned = 0
+  let duplicates = 0
+  for (const card of CARDS) {
+    const qty = owned[card.id] ?? 0
+    if (qty > 0) uniqueOwned += 1
+    if (qty > 1) duplicates += qty - 1
+  }
+  return { uniqueOwned, duplicates }
+}
 
 function CardTradesHubContent() {
   const { locale, setLocale } = usePersistedLocale()
   const auth = useAuth()
   const isRu = locale === 'ru'
+  const [owned, setOwned] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    if (auth.status !== 'authenticated') {
+      setOwned({})
+      return
+    }
+
+    let cancelled = false
+    void api
+      .getState()
+      .then((data) => {
+        if (!cancelled) setOwned(data.owned)
+      })
+      .catch(() => {
+        if (!cancelled) setOwned({})
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [auth.status])
+
+  const { uniqueOwned, duplicates } = collectionStats(owned)
 
   return (
     <I18nProvider locale={locale} setLocale={setLocale}>
@@ -62,10 +100,31 @@ function CardTradesHubContent() {
           </h1>
           <p className="hub-hero__tagline">
             {isRu
-              ? 'Трекер коллекций и обменов для карточных эвентов'
-              : 'Collection & trade tracker for card events'}
+              ? 'Коллекция, повторы, вишлист и история — всё в одном месте.'
+              : 'Collection, duplicates, wishlist and history — all in one place.'}
           </p>
         </header>
+
+        <section className="hub-stats">
+          <h2>{isRu ? 'Статистика' : 'Stats'}</h2>
+          <div className="hub-stats__grid">
+            <div className="hub-stat">
+              <span className="hub-stat__value">
+                {uniqueOwned}
+                <span className="hub-stat__total">/{CARDS.length}</span>
+              </span>
+              <span className="hub-stat__label">{isRu ? 'Карт в коллекции' : 'Cards collected'}</span>
+            </div>
+            <div className="hub-stat">
+              <span className="hub-stat__value">{duplicates}</span>
+              <span className="hub-stat__label">{isRu ? 'Дублей' : 'Duplicates'}</span>
+            </div>
+            <div className="hub-stat">
+              <span className="hub-stat__value">∞</span>
+              <span className="hub-stat__label">{isRu ? 'Возможных обменов' : 'Possible trades'}</span>
+            </div>
+          </div>
+        </section>
 
         <section className="hub-welcome">
           <p>
@@ -115,24 +174,6 @@ function CardTradesHubContent() {
                 )}
               </div>
             ))}
-          </div>
-        </section>
-
-        <section className="hub-stats">
-          <h2>{isRu ? 'Статистика' : 'Stats'}</h2>
-          <div className="hub-stats__grid">
-            <div className="hub-stat">
-              <span className="hub-stat__value">1</span>
-              <span className="hub-stat__label">{isRu ? 'Активных эвентов' : 'Active events'}</span>
-            </div>
-            <div className="hub-stat">
-              <span className="hub-stat__value">48</span>
-              <span className="hub-stat__label">{isRu ? 'Карт в коллекции' : 'Cards to collect'}</span>
-            </div>
-            <div className="hub-stat">
-              <span className="hub-stat__value">∞</span>
-              <span className="hub-stat__label">{isRu ? 'Возможных обменов' : 'Possible trades'}</span>
-            </div>
           </div>
         </section>
 

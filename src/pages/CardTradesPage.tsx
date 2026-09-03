@@ -11,7 +11,6 @@ import { AppToolbar } from '../components/settings/AppToolbar'
 import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSettingsDrawer'
 import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
-import { BRAND_NAME } from '../brand'
 import { DAILY_BONUS_TRADE_LIMIT, type TabId } from '../types'
 import '../App.css'
 
@@ -108,9 +107,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         <>
           <header className="hero">
             <Link to="/card-trades" className="hero__home-link">← {t('app.backToTracker')}</Link>
-            <p className="hero__brand">{BRAND_NAME}</p>
             <h1 className="hero__title">{t('app.heroTitle')}</h1>
-            <p className="hero__lead">{t('app.heroLead')}</p>
 
             <div className="hero__stats">
               <div
@@ -160,11 +157,6 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
               </div>
             </div>
 
-            <p className="hero__links">
-              <Link to="/card-trades/collections" className="hero__link">
-                {t('share.browseCollections')}
-              </Link>
-            </p>
           </header>
 
           <nav className="tabs" aria-label={t('app.tabs')}>
