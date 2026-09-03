@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import * as api from '../api/client'
 import { BRAND_NAME } from '../brand'
@@ -14,6 +14,7 @@ function VerifyEmailContent() {
   const token = searchParams.get('token') ?? ''
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
+  const requestedRef = useRef(false)
 
   useEffect(() => {
     if (!token) {
@@ -21,6 +22,10 @@ function VerifyEmailContent() {
       setError(t('auth.invalidToken'))
       return
     }
+
+    // Avoid double-consume under React Strict Mode in development.
+    if (requestedRef.current) return
+    requestedRef.current = true
 
     let cancelled = false
     void api

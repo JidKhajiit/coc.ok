@@ -67,6 +67,7 @@ export function PublicChrome({ locale, onLocaleChange, showCollectionNav = true 
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={auth.user?.username}
+        permissions={auth.user?.permissions}
         onLogout={auth.user ? auth.logout : undefined}
         locale={locale}
         onLocaleChange={onLocaleChange}

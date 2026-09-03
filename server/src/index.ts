@@ -19,10 +19,6 @@ const { db, client } = createDb(env.DATABASE_URL)
 
 const app = new Hono<{ Variables: AppVariables }>()
 
-if (env.TRUST_PROXY) {
-  // Hono reads X-Forwarded-* when behind a reverse proxy
-}
-
 app.use('*', secureHeaders())
 app.use('*', createSessionMiddleware(db, env))
 

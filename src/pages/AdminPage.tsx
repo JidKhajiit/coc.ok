@@ -39,7 +39,8 @@ function AdminShell() {
     void refresh()
   }, [refresh])
 
-  const canManageRoles = user.permissions.includes('roles:view')
+  const canViewRoles = user.permissions.includes('roles:view')
+  const canManageBackup = user.permissions.includes('roles:manage')
 
   return (
     <div className="app admin-app">
@@ -68,21 +69,21 @@ function AdminShell() {
         >
           Пользователи
         </NavLink>
-        {canManageRoles && (
-          <>
-            <NavLink
-              to="/admin-panel/roles"
-              className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
-            >
-              Роли
-            </NavLink>
-            <NavLink
-              to="/admin-panel/backup"
-              className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
-            >
-              Бэкап БД
-            </NavLink>
-          </>
+        {canViewRoles && (
+          <NavLink
+            to="/admin-panel/roles"
+            className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+          >
+            Роли
+          </NavLink>
+        )}
+        {canManageBackup && (
+          <NavLink
+            to="/admin-panel/backup"
+            className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+          >
+            Бэкап БД
+          </NavLink>
         )}
       </nav>
 
@@ -563,6 +564,7 @@ export function AdminBackupTab() {
       <h2 className="admin-section__title">Бэкап базы данных</h2>
       <p className="admin-section__desc">
         Экспорт и импорт всех данных: пользователи, коллекции, роли, разрешения.
+        Импорт полностью заменяет текущую БД содержимым бэкапа (не merge).
         Используйте для переноса данных на другой сервер.
       </p>
 

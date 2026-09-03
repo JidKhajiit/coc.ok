@@ -169,7 +169,13 @@ function CardTradesHubContent() {
                   </Link>
                 ) : (
                   <button className="btn btn--outline hub-event-card__btn" disabled>
-                    {isRu ? 'Скоро' : 'Soon'}
+                    {event.badge
+                      ? isRu
+                        ? event.badge.ru
+                        : event.badge.en
+                      : isRu
+                        ? 'Скоро'
+                        : 'Soon'}
                   </button>
                 )}
               </div>

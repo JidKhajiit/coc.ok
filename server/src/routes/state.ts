@@ -62,12 +62,17 @@ export function createStateRoutes(db: Db) {
   })
 
   app.put('/', async (c) => {
-    const contentLength = Number(c.req.header('content-length') ?? 0)
-    if (contentLength > MAX_BODY_BYTES) {
+    const raw = await c.req.text().catch(() => '')
+    if (raw.length > MAX_BODY_BYTES) {
       return c.json({ error: 'Payload too large' }, 413)
     }
 
-    const body = await c.req.json().catch(() => null)
+    let body: unknown = null
+    try {
+      body = raw ? JSON.parse(raw) : null
+    } catch {
+      body = null
+    }
     const parsed = appStateSchema.safeParse(body)
     if (!parsed.success) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid state' }, 400)

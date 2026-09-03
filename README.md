@@ -82,8 +82,8 @@ PostgreSQL доступен только внутри Docker-сети — пор
 | `SMTP_HOST` | SMTP-сервер (если пусто — письма в лог сервера) |
 | `SMTP_FROM` | Адрес отправителя |
 | `ALLOW_REGISTRATION` | `true` / `false` — разрешить регистрацию |
-| `TRUST_PROXY` | `true` если за reverse proxy |
-| `COOKIE_SECURE` | `true` для HTTPS-only cookies |
+| `TRUST_PROXY` | `true` если за reverse proxy (иначе `X-Forwarded-For` игнорируется) |
+| `COOKIE_SECURE` | `true` для HTTPS-only cookies (на HTTP оставляйте `false`) |
 | `PORT` | Порт сервера (по умолчанию 3000) |
 
 ## Регистрация и email

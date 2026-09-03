@@ -4,7 +4,7 @@ import { hash, verify } from '@node-rs/argon2'
 import { and, eq } from 'drizzle-orm'
 import { getCookie } from 'hono/cookie'
 import type { Db } from '../db/index.js'
-import { authTokens, userStates, users, userRoles, roles } from '../db/schema.js'
+import { authTokens, userStates, users, userRoles, roles, rolePermissions, permissions } from '../db/schema.js'
 import type { Env } from '../env.js'
 import { passwordResetEmail, verificationEmail } from '../lib/email.js'
 import {
@@ -16,6 +16,7 @@ import {
 import {
   createSession,
   destroySession,
+  destroyUserSessions,
   SESSION_COOKIE,
   type AppVariables,
 } from '../middleware/session.js'
@@ -97,7 +98,7 @@ async function consumeAuthToken(db: Db, token: string, type: 'email_verify' | 'p
 
 export function createAuthRoutes(db: Db, env: Env) {
   const app = new Hono<{ Variables: AppVariables }>()
-  const rateLimit = createRateLimit(10, 60_000)
+  const rateLimit = createRateLimit(10, 60_000, { trustProxy: env.TRUST_PROXY })
 
   app.post('/register', rateLimit, async (c) => {
     if (!env.ALLOW_REGISTRATION) {
@@ -118,17 +119,19 @@ export function createAuthRoutes(db: Db, env: Env) {
       .from(users)
       .where(eq(users.username, username))
       .limit(1)
-    if (existingUsername.length > 0) {
-      return c.json({ error: 'Username already taken' }, 409)
-    }
-
     const existingEmail = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.email, email))
       .limit(1)
-    if (existingEmail.length > 0) {
-      return c.json({ error: 'Email already registered' }, 409)
+    if (existingUsername.length > 0 || existingEmail.length > 0) {
+      // Same response for username/email conflict to avoid account enumeration.
+      return c.json({ error: 'Unable to register with these credentials' }, 409)
+    }
+
+    const [userRole] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, 'user')).limit(1)
+    if (!userRole) {
+      return c.json({ error: 'Server misconfigured: default role missing' }, 500)
     }
 
     const passwordHash = await hash(password)
@@ -142,15 +145,15 @@ export function createAuthRoutes(db: Db, env: Env) {
     }
 
     await db.insert(userStates).values({ userId: user.id, data: EMPTY_STATE })
+    await db.insert(userRoles).values({ userId: user.id, roleId: userRole.id })
 
-    // Assign default 'user' role
-    const [userRole] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, 'user')).limit(1)
-    if (userRole) {
-      await db.insert(userRoles).values({ userId: user.id, roleId: userRole.id })
+    try {
+      const token = await createAuthToken(db, user.id, 'email_verify')
+      await verificationEmail(env, email, token)
+    } catch (err) {
+      console.error('Verification email failed:', err)
+      // Account created; do not leak SMTP/identity details.
     }
-
-    const token = await createAuthToken(db, user.id, 'email_verify')
-    await verificationEmail(env, email, token)
 
     return c.json({
       message: 'Verification email sent',
@@ -194,7 +197,21 @@ export function createAuthRoutes(db: Db, env: Env) {
     }
 
     await createSession(db, env, c, user.id)
-    return c.json({ user: { id: user.id, username: user.username, email: user.email } })
+
+    const permRows = await db
+      .selectDistinct({ name: permissions.name })
+      .from(userRoles)
+      .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
+      .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .where(eq(userRoles.userId, user.id))
+
+    return c.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        permissions: permRows.map((p) => p.name),
+      },
+    })
   })
 
   app.post('/verify-email', rateLimit, async (c) => {
@@ -233,8 +250,12 @@ export function createAuthRoutes(db: Db, env: Env) {
 
     const user = rows[0]
     if (user?.email) {
-      const token = await createAuthToken(db, user.id, 'password_reset')
-      await passwordResetEmail(env, user.email, token)
+      try {
+        const token = await createAuthToken(db, user.id, 'password_reset')
+        await passwordResetEmail(env, user.email, token)
+      } catch (err) {
+        console.error('Password reset email failed:', err)
+      }
     }
 
     return c.json({
@@ -256,6 +277,11 @@ export function createAuthRoutes(db: Db, env: Env) {
 
     const passwordHash = await hash(parsed.data.password)
     await db.update(users).set({ passwordHash }).where(eq(users.id, userId))
+    await destroyUserSessions(db, userId)
+    // Invalidate unused password-reset tokens for this user
+    await db
+      .delete(authTokens)
+      .where(and(eq(authTokens.userId, userId), eq(authTokens.type, 'password_reset')))
 
     return c.json({ ok: true })
   })
@@ -276,8 +302,12 @@ export function createAuthRoutes(db: Db, env: Env) {
 
     const user = rows[0]
     if (user?.email && !user.emailVerified) {
-      const token = await createAuthToken(db, user.id, 'email_verify')
-      await verificationEmail(env, user.email, token)
+      try {
+        const token = await createAuthToken(db, user.id, 'email_verify')
+        await verificationEmail(env, user.email, token)
+      } catch (err) {
+        console.error('Resend verification email failed:', err)
+      }
     }
 
     return c.json({ message: 'If this email is pending verification, a new link has been sent' })
