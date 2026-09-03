@@ -107,6 +107,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
       ) : (
         <>
           <header className="hero">
+            <Link to="/" className="hero__home-link">← {t('app.backToHome')}</Link>
             <p className="hero__brand">{BRAND_NAME}</p>
             <h1 className="hero__title">{t('app.heroTitle')}</h1>
             <p className="hero__lead">{t('app.heroLead')}</p>

@@ -700,6 +700,24 @@ h4 {
   animation: rise 0.7s ease both;
 }
 
+.hero__home-link {
+  display: inline-block;
+  margin-bottom: 16px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(248, 242, 228, 0.12);
+  color: rgba(248, 242, 228, 0.85);
+  font-size: 0.88rem;
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hero__home-link:hover {
+  background: rgba(248, 242, 228, 0.2);
+  color: #f8f2e4;
+}
+
 .hero__brand {
   margin: 0 0 10px;
   font-family: var(--font-display);
