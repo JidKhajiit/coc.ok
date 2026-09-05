@@ -328,6 +328,12 @@ type SharedRow = {
   data: AppState
 }
 
+type TrendSummary = {
+  mostGiven: Array<{ cardId: string; count: number }>
+  mostRequested: Array<{ cardId: string; count: number }>
+  tradeCount: number
+}
+
 async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<SharedRow[]> {
   const rows = await db
     .select({
@@ -380,6 +386,71 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
   }
 
   return next.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+}
+
+async function listTrendStates(
+  db: Db,
+  event: CardTradeEventDetail,
+): Promise<Array<{ userId: string; data: AppState }>> {
+  const rows = await db
+    .select({
+      userId: cardTradeUserStates.userId,
+      data: cardTradeUserStates.data,
+    })
+    .from(cardTradeUserStates)
+    .where(eq(cardTradeUserStates.eventId, event.id))
+
+  const next = rows.map((row) => ({
+    userId: row.userId,
+    data: migrateState(row.data),
+  }))
+
+  if (!isSummerParty(event.slug)) return next
+
+  const userIdsWithNewState = new Set(next.map((row) => row.userId))
+  const legacyRows = await db
+    .select({
+      userId: userStates.userId,
+      data: userStates.data,
+    })
+    .from(userStates)
+
+  for (const row of legacyRows) {
+    if (userIdsWithNewState.has(row.userId)) continue
+    next.push({
+      userId: row.userId,
+      data: migrateState(row.data),
+    })
+  }
+
+  return next
+}
+
+function buildTrendSummary(states: Array<{ data: AppState }>): TrendSummary {
+  const given: Record<string, number> = {}
+  const requested: Record<string, number> = {}
+  let tradeCount = 0
+
+  for (const row of states) {
+    for (const trade of row.data.trades) {
+      given[trade.givenCardId] = (given[trade.givenCardId] ?? 0) + 1
+      if (trade.receivedCardId) {
+        requested[trade.receivedCardId] = (requested[trade.receivedCardId] ?? 0) + 1
+      }
+      tradeCount += 1
+    }
+  }
+
+  const toList = (map: Record<string, number>) =>
+    Object.entries(map)
+      .map(([cardId, count]) => ({ cardId, count }))
+      .sort((a, b) => b.count - a.count)
+
+  return {
+    mostGiven: toList(given),
+    mostRequested: toList(requested),
+    tradeCount,
+  }
 }
 
 export function createCardTradesRoutes(db: Db) {
@@ -436,6 +507,15 @@ export function createCardTradesRoutes(db: Db) {
       collection: toPublicPayload(row.shareSlug, row.username, row.data, row.updatedAt, event),
       event,
     })
+  })
+
+  app.use('/:eventSlug/trends', requireAuth)
+  app.get('/:eventSlug/trends', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const states = await listTrendStates(db, event)
+    return c.json({ trends: buildTrendSummary(states) })
   })
 
   app.use('/:eventSlug/state', requireAuth)

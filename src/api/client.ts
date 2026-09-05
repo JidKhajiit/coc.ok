@@ -1,4 +1,4 @@
-import type { Account, AppState, Card } from '../types'
+import type { Account, AppState, Card, TrendItem } from '../types'
 import type { CardSet } from '../data/cards'
 
 export type PublicCollection = {
@@ -53,6 +53,12 @@ export type CardTradeEventSummary = {
 export type CardTradeEvent = CardTradeEventSummary & {
   sets: CardSet[]
   cards: Card[]
+}
+
+export type CardTradeEventTrends = {
+  mostGiven: TrendItem[]
+  mostRequested: TrendItem[]
+  tradeCount: number
 }
 
 export class ApiError extends Error {
@@ -257,6 +263,13 @@ export async function putEventState(eventSlug: string, state: AppState): Promise
     },
   )
   return data
+}
+
+export async function getEventTrends(eventSlug: string): Promise<CardTradeEventTrends> {
+  const { trends } = await request<{ trends: CardTradeEventTrends }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/trends`,
+  )
+  return trends
 }
 
 export async function listEventPublicCollections(eventSlug: string): Promise<PublicCollectionSummary[]> {
