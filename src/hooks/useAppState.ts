@@ -479,7 +479,7 @@ export function useAppState() {
     return ids
   }, [state.potentialTrades, state.owned])
 
-  /** Карты с qty=0, ★, или нужные под потенциальный обмен */
+  /** Карты с qty=0, ♥, или нужные под потенциальный обмен */
   const neededCards = useMemo(() => {
     const ids = new Set<string>()
     for (const c of CARDS) {

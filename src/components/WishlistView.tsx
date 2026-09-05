@@ -124,7 +124,7 @@ export function WishlistView({
                       {qty === 0 && <span className="pill pill--warn">×0</span>}
                       {needed.length > 0 && (
                         <span className="pill pill--need">
-                          {needed.length > 0 ? '★' : ''}
+                          {needed.length > 0 ? '♥' : ''}
                         </span>
                       )}
                     </>
