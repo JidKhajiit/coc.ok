@@ -12,7 +12,7 @@ import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSetti
 import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
 import { DAILY_BONUS_TRADE_LIMIT, type Card, type TabId } from '../types'
-import type { CardTradeEvent } from '../api/client'
+import type { CardTradeEvent, CardTradeEventTrends } from '../api/client'
 import * as api from '../api/client'
 import '../App.css'
 
@@ -265,14 +265,43 @@ export function CardTradesTradesTab() {
 }
 
 export function CardTradesTrendsTab() {
-  const { app } = useOutletContext<CardTradesOutletContext>()
+  const { app, event } = useOutletContext<CardTradesOutletContext>()
+  const [trends, setTrends] = useState<CardTradeEventTrends>({
+    mostGiven: [],
+    mostRequested: [],
+    tradeCount: 0,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+
+    void api
+      .getEventTrends(event.slug)
+      .then((data) => {
+        if (!cancelled) setTrends(data)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTrends({
+            mostGiven: [],
+            mostRequested: [],
+            tradeCount: 0,
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [event.slug, app.state.trades.length])
 
   return (
     <TrendsView
+      cards={event.cards}
       owned={app.state.owned}
-      mostGiven={app.trends.mostGiven}
-      mostRequested={app.trends.mostRequested}
-      tradeCount={app.stats.historyCount}
+      mostGiven={trends.mostGiven}
+      mostRequested={trends.mostRequested}
+      tradeCount={trends.tradeCount}
     />
   )
 }

@@ -1,9 +1,9 @@
-import { CARD_BY_ID } from '../data/cards'
-import type { TrendItem } from '../types'
+import type { Card, TrendItem } from '../types'
 import { useI18n } from '../i18n'
 import { CardItem } from './CardItem'
 
 interface Props {
+  cards: Card[]
   owned: Record<string, number>
   mostGiven: TrendItem[]
   mostRequested: TrendItem[]
@@ -13,15 +13,18 @@ interface Props {
 function TrendList({
   title,
   hint,
+  cards,
   items,
   owned,
 }: {
   title: string
   hint: string
+  cards: Card[]
   items: TrendItem[]
   owned: Record<string, number>
 }) {
   const { t } = useI18n()
+  const cardById = Object.fromEntries(cards.map((card) => [card.id, card])) as Record<string, Card>
   return (
     <div className="trend-col">
       <h3>{title}</h3>
@@ -31,7 +34,7 @@ function TrendList({
       ) : (
         <ol className="trend-list">
           {items.slice(0, 15).map((item, i) => {
-            const card = CARD_BY_ID[item.cardId]
+            const card = cardById[item.cardId]
             if (!card) return null
             return (
               <li key={item.cardId} className="trend-list__row">
@@ -47,7 +50,7 @@ function TrendList({
   )
 }
 
-export function TrendsView({ owned, mostGiven, mostRequested, tradeCount }: Props) {
+export function TrendsView({ cards, owned, mostGiven, mostRequested, tradeCount }: Props) {
   const { t } = useI18n()
   return (
     <section className="panel">
@@ -66,12 +69,14 @@ export function TrendsView({ owned, mostGiven, mostRequested, tradeCount }: Prop
         <TrendList
           title={t('trends.givenTitle')}
           hint={t('trends.givenHint')}
+          cards={cards}
           items={mostGiven}
           owned={owned}
         />
         <TrendList
           title={t('trends.receivedTitle')}
           hint={t('trends.receivedHint')}
+          cards={cards}
           items={mostRequested}
           owned={owned}
         />
