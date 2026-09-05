@@ -119,7 +119,7 @@ const ru: Dict = {
   'collection.colorGold': 'Зол',
   'collection.filterOwned': 'Мои',
   'collection.filterTrade': 'На обмен',
-  'collection.filterNeeded': '★ ищу',
+  'collection.filterNeeded': '♥ ищу',
   'collection.filterHideUnknown': 'Скрыть ?',
   'collection.reset': 'Сбросить',
   'collection.count': '{n} карт',
@@ -131,7 +131,7 @@ const ru: Dict = {
 
   'wishlist.title': 'Ищу карты',
   'wishlist.lead':
-    'Карты с ×0, помеченные ★ и без копии под потенциальный обмен. Не хватает: {n}. Аккаунты — в настройках эвента.',
+    'Карты с ×0, помеченные ♥ и без копии под потенциальный обмен. Не хватает: {n}. Аккаунты — в настройках эвента.',
   'wishlist.search': 'Поиск в списке…',
   'wishlist.filterAll': 'Всё, что ищу',
   'wishlist.filterMissing': 'Только ×0',
@@ -161,7 +161,7 @@ const ru: Dict = {
   'templates.lfMissingFt': 'LF (×0) + FT',
   'templates.lfMissingFtHint': 'Только карты, которых нет + повторы',
   'templates.lfNeeded': 'Looking for (ищу)',
-  'templates.lfNeededHint': '×0, ★ и «на обмен»',
+  'templates.lfNeededHint': '×0, ♥ и «на обмен»',
   'templates.lfMissing': 'Looking for (×0)',
   'templates.lfMissingHint': 'Только карты с количеством 0',
   'templates.ft': 'For trade',
@@ -473,7 +473,7 @@ const en: Dict = {
   'collection.colorGold': 'Gld',
   'collection.filterOwned': 'Owned',
   'collection.filterTrade': 'For trade',
-  'collection.filterNeeded': '★ looking for',
+  'collection.filterNeeded': '♥ looking for',
   'collection.filterHideUnknown': 'Hide ?',
   'collection.reset': 'Reset',
   'collection.count': '{n} cards',
@@ -485,7 +485,7 @@ const en: Dict = {
 
   'wishlist.title': 'Looking for',
   'wishlist.lead':
-    'Cards at ×0, marked ★, and missing a spare for a potential trade. Missing: {n}. Accounts are in event settings.',
+    'Cards at ×0, marked ♥, and missing a spare for a potential trade. Missing: {n}. Accounts are in event settings.',
   'wishlist.search': 'Search list…',
   'wishlist.filterAll': 'All looking for',
   'wishlist.filterMissing': 'Only ×0',
@@ -515,7 +515,7 @@ const en: Dict = {
   'templates.lfMissingFt': 'LF (×0) + FT',
   'templates.lfMissingFtHint': 'Missing cards only + duplicates',
   'templates.lfNeeded': 'Looking for',
-  'templates.lfNeededHint': '×0, ★ and “for trade”',
+  'templates.lfNeededHint': '×0, ♥ and “for trade”',
   'templates.lfMissing': 'Looking for (×0)',
   'templates.lfMissingHint': 'Cards with quantity 0 only',
   'templates.ft': 'For trade',

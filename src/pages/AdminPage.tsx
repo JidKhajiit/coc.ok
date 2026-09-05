@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useOutletContext } from 'react-router-dom'
 import type { PermissionOutletContext } from '../components/RequirePermission'
-import type { AdminUser, AdminRole, AdminPermission, DatabaseBackup } from '../api/client'
+import type {
+  AdminUser,
+  AdminRole,
+  AdminPermission,
+  CardTradeEvent,
+  CardTradeEventSummary,
+  DatabaseBackup,
+} from '../api/client'
 import * as api from '../api/client'
 import { BRAND_NAME } from '../brand'
 import '../App.css'
@@ -41,6 +48,7 @@ function AdminShell() {
 
   const canViewRoles = user.permissions.includes('roles:view')
   const canManageBackup = user.permissions.includes('roles:manage')
+  const canManageEvents = user.permissions.includes('events:manage')
 
   return (
     <div className="app admin-app">
@@ -83,6 +91,14 @@ function AdminShell() {
             className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
           >
             Бэкап БД
+          </NavLink>
+        )}
+        {canManageEvents && (
+          <NavLink
+            to="/admin-panel/events"
+            className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+          >
+            Карточные эвенты
           </NavLink>
         )}
       </nav>
@@ -467,6 +483,358 @@ export function AdminRolesTab() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card Trade Events Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+type EventFormState = {
+  slug: string
+  name: string
+  startDate: string
+  endDate: string
+  setsText: string
+  cardsText: string
+}
+
+const DEFAULT_EVENT_FORM: EventFormState = {
+  slug: '',
+  name: '',
+  startDate: '',
+  endDate: '',
+  setsText: 'shellshy|Shellshy Set|1-9',
+  cardsText: '1|Water Shy|1|blue',
+}
+
+function parseSetsText(text: string) {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const [id, name, range] = line.split('|').map((part) => part?.trim() ?? '')
+      if (!id || !name || !range) {
+        throw new Error(`Строка набора ${index + 1}: нужен формат id|Название|1-9`)
+      }
+      const match = /^(\d+)\s*-\s*(\d+)$/.exec(range)
+      if (!match) {
+        throw new Error(`Строка набора ${index + 1}: диапазон должен быть в формате 1-9`)
+      }
+      return {
+        id,
+        name,
+        from: Number(match[1]),
+        to: Number(match[2]),
+      }
+    })
+}
+
+function parseCardsText(text: string) {
+  type ParsedCard = {
+    number: number
+    name: string
+    rarity: 1 | 2 | 3 | 4 | 5
+    color: 'blue' | 'gold'
+    unknownName?: boolean
+  }
+
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map<ParsedCard>((line, index) => {
+      const [numberRaw, name, rarityRaw, colorRaw, unknownRaw] = line.split('|').map((part) => part?.trim() ?? '')
+      if (!numberRaw || !name || !rarityRaw || !colorRaw) {
+        throw new Error(`Строка карты ${index + 1}: нужен формат №|Название|Редкость|blue|[unknown]`)
+      }
+      const number = Number(numberRaw)
+      const rarity = Number(rarityRaw) as 1 | 2 | 3 | 4 | 5
+      let color: 'blue' | 'gold'
+      if (!Number.isInteger(number) || number <= 0) {
+        throw new Error(`Строка карты ${index + 1}: номер должен быть положительным числом`)
+      }
+      if (![1, 2, 3, 4, 5].includes(rarity)) {
+        throw new Error(`Строка карты ${index + 1}: редкость должна быть от 1 до 5`)
+      }
+      if (colorRaw === 'blue' || colorRaw === 'gold') {
+        color = colorRaw
+      } else {
+        throw new Error(`Строка карты ${index + 1}: цвет должен быть blue или gold`)
+      }
+      return {
+        number,
+        name,
+        rarity,
+        color,
+        unknownName: unknownRaw.toLowerCase() === 'unknown',
+      }
+    })
+}
+
+function formatSetsText(event: CardTradeEvent) {
+  return event.sets.map((set) => `${set.id}|${set.name}|${set.from}-${set.to}`).join('\n')
+}
+
+function formatCardsText(event: CardTradeEvent) {
+  return event.cards
+    .map((card) =>
+      [
+        card.number,
+        card.name,
+        card.rarity,
+        card.color,
+        card.unknownName ? 'unknown' : '',
+      ]
+        .filter(Boolean)
+        .join('|'),
+    )
+    .join('\n')
+}
+
+export function AdminEventsTab() {
+  const { user } = useOutletContext<AdminOutletContext>()
+  const [events, setEvents] = useState<CardTradeEventSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [editingSlug, setEditingSlug] = useState<string>('')
+  const [loadingEventId, setLoadingEventId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<string | null>(null)
+  const [form, setForm] = useState<EventFormState>(DEFAULT_EVENT_FORM)
+
+  const canManage = user.permissions.includes('events:manage')
+
+  const refreshEvents = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setEvents(await api.listCardTradeEvents())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки эвентов')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshEvents()
+  }, [refreshEvents])
+
+  const resetForm = () => {
+    setEditingEventId(null)
+    setEditingSlug('')
+    setForm(DEFAULT_EVENT_FORM)
+  }
+
+  const startEdit = async (event: CardTradeEventSummary) => {
+    setLoadingEventId(event.id)
+    setError(null)
+    setResult(null)
+    try {
+      const full = await api.getCardTradeEvent(event.slug)
+      setEditingEventId(full.id)
+      setEditingSlug(full.slug)
+      setForm({
+        slug: full.slug,
+        name: full.name,
+        startDate: full.startDate,
+        endDate: full.endDate,
+        setsText: formatSetsText(full),
+        cardsText: formatCardsText(full),
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить эвент')
+    } finally {
+      setLoadingEventId(null)
+    }
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setResult(null)
+    setError(null)
+    try {
+      const payload = {
+        name: form.name.trim(),
+        startDate: form.startDate,
+        endDate: form.endDate,
+        sets: parseSetsText(form.setsText),
+        cards: parseCardsText(form.cardsText),
+      }
+      const event = editingEventId
+        ? await api.updateAdminCardTradeEvent(editingEventId, payload)
+        : await api.createAdminCardTradeEvent({
+            slug: form.slug.trim(),
+            ...payload,
+          })
+      setResult(
+        editingEventId
+          ? `Эвент обновлён: /card-trades/${event.slug}`
+          : `Эвент создан: /card-trades/${event.slug}`,
+      )
+      resetForm()
+      await refreshEvents()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения эвента')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="admin-section">
+      <div className="admin-section__header">
+        <h2 className="admin-section__title">Карточные эвенты</h2>
+      </div>
+
+      <p className="admin-section__desc">
+        Создаёт новый трекер вида `card-trades/:slug` с отдельной коллекцией, вишлистом, обменами и публичными коллекциями.
+      </p>
+
+      {error && <div className="admin-result admin-result--error">{error}</div>}
+      {result && <div className="admin-result admin-result--success">{result}</div>}
+
+      {canManage && (
+        <div className="admin-form">
+          <h3 className="admin-form__title">
+            {editingEventId ? `Редактирование: ${editingSlug}` : 'Новый карточный эвент'}
+          </h3>
+
+          <div className="admin-form__field">
+            <label>Название</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Harvest Hunt"
+            />
+          </div>
+
+          <div className="admin-form__field">
+            <label>Slug / URL</label>
+            <input
+              type="text"
+              value={form.slug}
+              onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
+              placeholder="harvest-hunt"
+              disabled={Boolean(editingEventId)}
+            />
+          </div>
+
+          <div className="admin-form__field">
+            <label>Дата начала</label>
+            <input
+              type="date"
+              value={form.startDate}
+              onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))}
+            />
+          </div>
+
+          <div className="admin-form__field">
+            <label>Дата окончания</label>
+            <input
+              type="date"
+              value={form.endDate}
+              onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
+            />
+          </div>
+
+          <div className="admin-form__field">
+            <label>Наборы</label>
+            <textarea
+              className="admin-backup-textarea"
+              rows={6}
+              value={form.setsText}
+              onChange={(e) => setForm((prev) => ({ ...prev, setsText: e.target.value }))}
+              placeholder={'shellshy|Shellshy Set|1-9\nwobbler|Wobbler Set|10-18'}
+            />
+            <small className="admin-muted">Формат: `id|Название|1-9`, по одному набору на строку.</small>
+          </div>
+
+          <div className="admin-form__field">
+            <label>Карты</label>
+            <textarea
+              className="admin-backup-textarea"
+              rows={10}
+              value={form.cardsText}
+              onChange={(e) => setForm((prev) => ({ ...prev, cardsText: e.target.value }))}
+              placeholder={'1|Water Shy|1|blue\n2|Shining Prize|2|gold\n3|Unknown Card|4|blue|unknown'}
+            />
+            <small className="admin-muted">
+              Формат: `номер|Название|редкость|blue|[unknown]`. Карта автоматически попадёт в набор по диапазону номера.
+            </small>
+          </div>
+
+          <div className="admin-form__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => void handleSave()}
+              disabled={
+                saving ||
+                (!editingEventId && !form.slug.trim()) ||
+                !form.name.trim() ||
+                !form.startDate ||
+                !form.endDate ||
+                !form.setsText.trim() ||
+                !form.cardsText.trim()
+              }
+            >
+              {saving ? 'Сохранение…' : editingEventId ? 'Сохранить изменения' : 'Создать эвент'}
+            </button>
+            {editingEventId && (
+              <button
+                type="button"
+                className="btn btn--outline"
+                onClick={resetForm}
+                disabled={saving}
+              >
+                Отмена
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="admin-roles-list">
+        {loading ? (
+          <p className="admin-loading">Загрузка…</p>
+        ) : (
+          events.map((event) => (
+            <div key={event.id} className="admin-role-card">
+              <div className="admin-role-card__header">
+                <h4 className="admin-role-card__name">
+                  {event.name}
+                  {!event.active && <span className="admin-badge admin-badge--warn">архив</span>}
+                </h4>
+                {canManage && (
+                  <div className="admin-role-card__actions">
+                    <button
+                      type="button"
+                      className="btn btn--sm btn--outline"
+                      onClick={() => void startEdit(event)}
+                      disabled={loadingEventId === event.id}
+                    >
+                      {loadingEventId === event.id ? 'Загрузка…' : 'Редактировать'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="admin-role-card__desc">
+                `/card-trades/{event.slug}` · {event.startDate} - {event.endDate}
+              </p>
+              <div className="admin-role-card__perms">
+                <span className="admin-perm-tag">{event.setCount} сетов</span>
+                <span className="admin-perm-tag">{event.cardCount} карт</span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   )

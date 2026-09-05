@@ -1,4 +1,5 @@
-import type { Account, AppState } from '../types'
+import type { Account, AppState, Card } from '../types'
+import type { CardSet } from '../data/cards'
 
 export type PublicCollection = {
   slug: string
@@ -11,6 +12,11 @@ export type PublicCollection = {
     uniqueOwned: number
     neededCount: number
   }
+  event: {
+    slug: string
+    name: string
+    cardCount: number
+  }
 }
 
 export type PublicCollectionSummary = {
@@ -21,11 +27,32 @@ export type PublicCollectionSummary = {
     uniqueOwned: number
     neededCount: number
   }
+  event: {
+    slug: string
+    name: string
+    cardCount: number
+  }
 }
 
 export type ShareSettings = {
   enabled: boolean
   slug: string
+}
+
+export type CardTradeEventSummary = {
+  id: string
+  slug: string
+  name: string
+  startDate: string
+  endDate: string
+  active: boolean
+  cardCount: number
+  setCount: number
+}
+
+export type CardTradeEvent = CardTradeEventSummary & {
+  sets: CardSet[]
+  cards: Card[]
 }
 
 export class ApiError extends Error {
@@ -70,6 +97,23 @@ export type AdminPermission = {
   name: string
   description: string | null
 }
+
+export type CreateCardTradeEventInput = {
+  slug: string
+  name: string
+  startDate: string
+  endDate: string
+  sets: CardSet[]
+  cards: Array<{
+    number: number
+    name: string
+    rarity: 1 | 2 | 3 | 4 | 5
+    color: 'blue' | 'gold'
+    unknownName?: boolean
+  }>
+}
+
+export type UpdateCardTradeEventInput = Omit<CreateCardTradeEventInput, 'slug'>
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -185,6 +229,73 @@ export async function updateShareSettings(settings: ShareSettings): Promise<Shar
   return share
 }
 
+export async function listCardTradeEvents(): Promise<CardTradeEventSummary[]> {
+  const { events } = await request<{ events: CardTradeEventSummary[] }>('/api/card-trades/events')
+  return events
+}
+
+export async function getCardTradeEvent(eventSlug: string): Promise<CardTradeEvent> {
+  const { event } = await request<{ event: CardTradeEvent }>(
+    `/api/card-trades/events/${encodeURIComponent(eventSlug)}`,
+  )
+  return event
+}
+
+export async function getEventState(eventSlug: string): Promise<AppState> {
+  const { data } = await request<{ data: AppState }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/state`,
+  )
+  return data
+}
+
+export async function putEventState(eventSlug: string, state: AppState): Promise<AppState> {
+  const { data } = await request<{ data: AppState }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/state`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(state),
+    },
+  )
+  return data
+}
+
+export async function listEventPublicCollections(eventSlug: string): Promise<PublicCollectionSummary[]> {
+  const { collections } = await request<{ collections: PublicCollectionSummary[] }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/collections`,
+  )
+  return collections
+}
+
+export async function getEventPublicCollection(
+  eventSlug: string,
+  slug: string,
+): Promise<{ collection: PublicCollection; event: CardTradeEvent }> {
+  return request<{ collection: PublicCollection; event: CardTradeEvent }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/collections/${encodeURIComponent(slug)}`,
+  )
+}
+
+export async function getEventShareSettings(eventSlug: string): Promise<ShareSettings> {
+  const { share } = await request<{ share: ShareSettings }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/share`,
+  )
+  return share
+}
+
+export async function updateEventShareSettings(
+  eventSlug: string,
+  settings: ShareSettings,
+): Promise<ShareSettings> {
+  const { share } = await request<{ share: ShareSettings }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/share`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: settings.enabled, slug: settings.slug }),
+    },
+  )
+  return share
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,6 +350,30 @@ export async function deleteRole(roleId: string): Promise<void> {
 export async function getAdminPermissions(): Promise<AdminPermission[]> {
   const { permissions } = await request<{ permissions: AdminPermission[] }>('/api/admin/permissions')
   return permissions
+}
+
+export async function createAdminCardTradeEvent(
+  data: CreateCardTradeEventInput,
+): Promise<CardTradeEvent> {
+  const { event } = await request<{ event: CardTradeEvent }>('/api/card-trades/admin/events', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+  return event
+}
+
+export async function updateAdminCardTradeEvent(
+  eventId: string,
+  data: UpdateCardTradeEventInput,
+): Promise<CardTradeEvent> {
+  const { event } = await request<{ event: CardTradeEvent }>(
+    `/api/card-trades/admin/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+  )
+  return event
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

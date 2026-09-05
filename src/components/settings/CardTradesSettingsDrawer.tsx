@@ -8,6 +8,7 @@ import { SettingsAccordion, SettingsDrawer } from './SettingsDrawer'
 type Props = {
   open: boolean
   username: string
+  eventSlug: string
   onClose: () => void
   accounts: Account[]
   onAdd: () => void
@@ -24,6 +25,7 @@ type AccordionId = 'accounts' | 'share' | 'backup' | null
 export function CardTradesSettingsDrawer({
   open,
   username,
+  eventSlug,
   onClose,
   accounts,
   onAdd,
@@ -53,17 +55,17 @@ export function CardTradesSettingsDrawer({
     setPasteText('')
     setShareMsg('')
     setExpanded('accounts')
-    void api.getShareSettings().then((share) => {
+    void api.getEventShareSettings(eventSlug).then((share) => {
       setShareEnabled(share.enabled)
       setShareSlug(share.slug)
     })
-  }, [open, accounts, username])
+  }, [open, accounts, username, eventSlug])
 
   const toggle = (id: Exclude<AccordionId, null>) => {
     setExpanded((prev) => (prev === id ? null : id))
   }
 
-  const shareUrl = `${window.location.origin}/card-trades/collections/${shareSlug}`
+  const shareUrl = `${window.location.origin}/card-trades/${eventSlug}/collections/${shareSlug}`
 
   return (
     <SettingsDrawer
@@ -122,7 +124,7 @@ export function CardTradesSettingsDrawer({
             checked={shareEnabled}
             onChange={async () => {
               try {
-                const share = await api.updateShareSettings({
+                const share = await api.updateEventShareSettings(eventSlug, {
                   enabled: !shareEnabled,
                   slug: shareSlug,
                 })

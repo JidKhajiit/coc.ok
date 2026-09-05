@@ -37,7 +37,15 @@ const FRUIT_ICON: Record<CozyFarmFruit, string> = {
   orange: hypnostrixImg,
 }
 
-const BONUS_FIELD: Record<CozyFarmFruit, keyof CozyFarmListingInput> = {
+type BonusField =
+  | 'bonusDragonfruit'
+  | 'bonusCarrot'
+  | 'bonusBamboo'
+  | 'bonusPhantom'
+  | 'bonusCranberry'
+  | 'bonusOrange'
+
+const BONUS_FIELD: Record<CozyFarmFruit, BonusField> = {
   dragonfruit: 'bonusDragonfruit',
   carrot: 'bonusCarrot',
   bamboo: 'bonusBamboo',

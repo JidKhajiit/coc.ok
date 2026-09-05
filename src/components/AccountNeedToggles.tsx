@@ -105,7 +105,7 @@ export function AccountNeedToggles({
           title={isOn ? t('need.remove') : t('need.add')}
           aria-pressed={isOn}
         >
-          {isOn ? '★' : '☆'}
+          {isOn ? '♥' : '♡'}
         </button>
       </div>
     )
@@ -178,7 +178,7 @@ export function AccountNeedToggles({
             : t('need.markAccounts')
         }
       >
-        {isOn ? '★' : '☆'}
+        {isOn ? '♥' : '♡'}
         {count > 0 && <span className="acc-needs__count">{count}</span>}
       </button>
       {menu}

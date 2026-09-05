@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { I18nProvider } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
 import { BRAND_NAME } from '../brand'
+import * as api from '../api/client'
 import '../App.css'
 
 type Localized = { ru: string; en: string }
@@ -34,13 +36,6 @@ const CURRENT_EVENTS: SiteEvent[] = [
     start: '2026-09-03',
     end: '2026-09-05',
     path: '/cozy-farm',
-  },
-  {
-    id: 'summer-party',
-    name: { ru: 'Летняя вечеринка', en: 'Summer Party' },
-    // «ещё 34 дня» от 3.09.2026 → до 7.10.2026
-    end: '2026-10-07',
-    path: '/card-trades/summer-party',
   },
 ]
 
@@ -212,6 +207,38 @@ function daysRu(n: number): string {
 function HomeContent() {
   const { locale, setLocale } = usePersistedLocale()
   const isRu = locale === 'ru'
+  const [cardTradeEvents, setCardTradeEvents] = useState<SiteEvent[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .listCardTradeEvents()
+      .then((events) => {
+        if (cancelled) return
+        setCardTradeEvents(
+          events
+            .filter((event) => event.active)
+            .map((event) => ({
+              id: event.slug,
+              name: { ru: event.name, en: event.name },
+              start: event.startDate,
+              end: event.endDate,
+              path: `/card-trades/${event.slug}`,
+            })),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setCardTradeEvents([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentEvents = useMemo(
+    () => [...CURRENT_EVENTS, ...cardTradeEvents].sort((a, b) => (a.start ?? a.end).localeCompare(b.start ?? b.end)),
+    [cardTradeEvents],
+  )
 
   return (
     <I18nProvider locale={locale} setLocale={setLocale}>
@@ -241,7 +268,7 @@ function HomeContent() {
           <div className="home-schedule__col">
             <h2>{isRu ? 'Текущие события' : 'Current Events'}</h2>
             <EventList
-              events={CURRENT_EVENTS}
+              events={currentEvents}
               isRu={isRu}
               mode="current"
               emptyLabel={isRu ? 'Сейчас нет активных событий' : 'No active events right now'}

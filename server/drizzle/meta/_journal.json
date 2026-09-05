@@ -57,6 +57,13 @@
       "when": 1757300000000,
       "tag": "0007_cozy_farm_drop_user_uid_key",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1757095200000,
+      "tag": "0008_card_trade_events",
+      "breakpoints": true
     }
   ]
 }

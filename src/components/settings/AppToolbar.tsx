@@ -13,6 +13,7 @@ type Props = {
   onEventSettings?: () => void
   /** Коллекции игроков — только в контексте card-trades, не на других эвентах */
   showCollectionNav?: boolean
+  collectionPath?: string
 }
 
 export function AppToolbar({
@@ -23,6 +24,7 @@ export function AppToolbar({
   onLocaleChange,
   onEventSettings,
   showCollectionNav = false,
+  collectionPath = '/card-trades/collections',
 }: Props) {
   const { t } = useI18n()
   const [siteOpen, setSiteOpen] = useState(false)
@@ -36,7 +38,7 @@ export function AppToolbar({
             {BRAND_NAME}
           </Link>
           {showCollectionNav && (
-            <Link to="/card-trades/collections" className="app-toolbar__link">
+            <Link to={collectionPath} className="app-toolbar__link">
               {t('share.browseCollections')}
             </Link>
           )}

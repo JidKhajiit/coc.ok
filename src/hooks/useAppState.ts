@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { migrateState, isEmptyState } from '../../shared/migrateState'
 import { EMPTY_STATE } from '../../shared/types'
-import { CARDS } from '../data/cards'
+import type { Card } from '../types'
 import type {
   Account,
   AppState,
@@ -23,12 +23,13 @@ function normalizeTradeSource(source: unknown): TradeSource {
     : 'completed'
 }
 
-const STORAGE_KEY = 'coc-card-trades-v1'
+const LEGACY_STORAGE_KEY = 'coc-card-trades-v1'
 const SAVE_DEBOUNCE_MS = 500
 
-function loadLegacyLocalStorage(): AppState | null {
+function loadLegacyLocalStorage(eventSlug: string): AppState | null {
+  if (eventSlug !== 'summer-party') return null
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<AppState> & { wishlist?: string[] }
     return migrateState(parsed)
@@ -37,9 +38,10 @@ function loadLegacyLocalStorage(): AppState | null {
   }
 }
 
-function clearLegacyLocalStorage() {
+function clearLegacyLocalStorage(eventSlug: string) {
+  if (eventSlug !== 'summer-party') return
   try {
-    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
   } catch {
     // ignore
   }
@@ -49,7 +51,7 @@ function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function useAppState() {
+export function useAppState(eventSlug: string, cards: Card[]) {
   const [state, setState] = useState<AppState>(EMPTY_STATE)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -65,12 +67,12 @@ export function useAppState() {
       setLoading(true)
       setSaveError(null)
       try {
-        let data = await api.getState()
+        let data = await api.getEventState(eventSlug)
 
-        const legacy = loadLegacyLocalStorage()
+        const legacy = loadLegacyLocalStorage(eventSlug)
         if (legacy && isEmptyState(data) && !isEmptyState(legacy)) {
-          data = await api.putState(legacy)
-          clearLegacyLocalStorage()
+          data = await api.putEventState(eventSlug, legacy)
+          clearLegacyLocalStorage(eventSlug)
         }
 
         if (!cancelled) {
@@ -91,7 +93,7 @@ export function useAppState() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [eventSlug])
 
   useEffect(() => {
     if (loading) return
@@ -107,7 +109,7 @@ export function useAppState() {
       setSaving(true)
       const snapshot = state
       void api
-        .putState(snapshot)
+        .putEventState(eventSlug, snapshot)
         .then((saved) => {
           setState((current) => {
             // Ignore stale responses if the user edited while the request was in flight.
@@ -129,7 +131,7 @@ export function useAppState() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [state, loading])
+  }, [state, loading, eventSlug])
 
   const reservedByCard = useMemo(() => {
     const map: Record<string, number> = {}
@@ -479,10 +481,10 @@ export function useAppState() {
     return ids
   }, [state.potentialTrades, state.owned])
 
-  /** Карты с qty=0, ★, или нужные под потенциальный обмен */
+  /** Карты с qty=0, ♥, или нужные под потенциальный обмен */
   const neededCards = useMemo(() => {
     const ids = new Set<string>()
-    for (const c of CARDS) {
+    for (const c of cards) {
       if ((state.owned[c.id] ?? 0) === 0) ids.add(c.id)
     }
     for (const id of Object.keys(state.neededBy)) {
@@ -490,10 +492,10 @@ export function useAppState() {
     }
     for (const id of tradeNeedCardIds) ids.add(id)
     return [...ids]
-      .map((id) => CARDS.find((c) => c.id === id)!)
+      .map((id) => cards.find((c) => c.id === id)!)
       .filter(Boolean)
       .sort((a, b) => a.number - b.number)
-  }, [state.owned, state.neededBy, tradeNeedCardIds])
+  }, [state.owned, state.neededBy, tradeNeedCardIds, cards])
 
   const trends = useMemo(() => {
     const given: Record<string, number> = {}
@@ -521,7 +523,7 @@ export function useAppState() {
     const ownedIds = Object.keys(state.owned).filter((id) => (state.owned[id] ?? 0) > 0)
     const totalCopies = Object.values(state.owned).reduce((s, n) => s + n, 0)
     const tradeable = duplicates.reduce((s, d) => s + d.tradeable, 0)
-    const missingCount = CARDS.filter((c) => (state.owned[c.id] ?? 0) === 0).length
+    const missingCount = cards.filter((c) => (state.owned[c.id] ?? 0) === 0).length
     let completedCount = 0
     let archiveCount = 0
     let tradesToday = 0
@@ -550,6 +552,7 @@ export function useAppState() {
     state.potentialTrades.length,
     duplicates,
     neededCards.length,
+    cards,
   ])
 
   const exportBackup = useCallback(() => {

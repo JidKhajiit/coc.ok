@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { CARDS } from '../data/cards'
 import type { Account, Card } from '../types'
 import { useI18n } from '../i18n'
 import { AccountNeedToggles } from './AccountNeedToggles'
@@ -8,6 +7,7 @@ import { SearchField } from './SearchField'
 
 interface Props {
   accounts: Account[]
+  cards: Card[]
   neededBy: Record<string, string[]>
   owned: Record<string, number>
   tradeNeedCardIds: Set<string>
@@ -19,6 +19,7 @@ interface Props {
 
 export function WishlistView({
   accounts,
+  cards: allCards,
   neededBy,
   owned,
   tradeNeedCardIds,
@@ -35,7 +36,7 @@ export function WishlistView({
     const q = query.trim().toLowerCase()
     const list: Card[] = []
 
-    for (const c of CARDS) {
+    for (const c of allCards) {
       const qty = owned[c.id] ?? 0
       const needed = neededBy[c.id] ?? []
       const isMissing = qty === 0
@@ -66,11 +67,11 @@ export function WishlistView({
     }
 
     return list.sort((a, b) => a.number - b.number)
-  }, [owned, neededBy, tradeNeedCardIds, accountFilter, query])
+  }, [allCards, owned, neededBy, tradeNeedCardIds, accountFilter, query])
 
   const missingCount = useMemo(
-    () => CARDS.filter((c) => (owned[c.id] ?? 0) === 0).length,
-    [owned],
+    () => allCards.filter((c) => (owned[c.id] ?? 0) === 0).length,
+    [allCards, owned],
   )
 
   return (
@@ -124,7 +125,7 @@ export function WishlistView({
                       {qty === 0 && <span className="pill pill--warn">×0</span>}
                       {needed.length > 0 && (
                         <span className="pill pill--need">
-                          {needed.length > 0 ? '★' : ''}
+                          {needed.length > 0 ? '♥' : ''}
                         </span>
                       )}
                     </>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CARDS, SETS } from '../data/cards'
+import type { CardSet } from '../data/cards'
 import type { Account, Card, CardColor, Rarity } from '../types'
 import { useI18n } from '../i18n'
 import { AccountNeedToggles } from './AccountNeedToggles'
@@ -11,6 +11,8 @@ type SortMode = 'number' | 'rarity-asc' | 'rarity-desc'
 
 interface Props {
   username: string
+  cards: Card[]
+  sets: CardSet[]
   owned: Record<string, number>
   accounts: Account[]
   neededBy: Record<string, string[]>
@@ -32,6 +34,8 @@ function compareCards(a: Card, b: Card, sort: SortMode): number {
 
 export function CollectionView({
   username,
+  cards,
+  sets,
   owned,
   accounts,
   neededBy,
@@ -57,7 +61,7 @@ export function CollectionView({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const list = CARDS.filter((c) => {
+    const list = cards.filter((c) => {
       if (setId !== 'all' && c.setId !== setId) return false
       if (rarity !== 'all' && c.rarity !== rarity) return false
       if (color !== 'all' && c.color !== color) return false
@@ -92,6 +96,7 @@ export function CollectionView({
     owned,
     reservedByCard,
     neededBy,
+    cards,
   ])
 
   const grouped = useMemo(() => {
@@ -102,11 +107,11 @@ export function CollectionView({
       list.push(c)
       map.set(c.setId, list)
     }
-    return SETS.filter((s) => map.has(s.id)).map((s) => ({
+    return sets.filter((s) => map.has(s.id)).map((s) => ({
       set: s,
       cards: map.get(s.id)!,
     }))
-  }, [filtered, sort])
+  }, [filtered, sort, sets])
 
   function renderCard(c: Card) {
     const qty = owned[c.id] ?? 0
@@ -192,6 +197,7 @@ export function CollectionView({
 
       {!readOnly && (
         <TradeTemplates
+          cards={cards}
           owned={owned}
           neededBy={neededBy}
           reservedByCard={reservedByCard}
@@ -243,7 +249,7 @@ export function CollectionView({
               onChange={(e) => setSetId(e.target.value)}
             >
               <option value="all">{t('common.all')}</option>
-              {SETS.map((s) => (
+              {sets.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name.replace(/ Set$/, '')}
                 </option>
