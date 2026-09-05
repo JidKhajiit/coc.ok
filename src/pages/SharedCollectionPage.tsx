@@ -1,15 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
 import * as api from '../api/client'
-import type { PublicCollection } from '../api/client'
+import type { CardTradeEvent, PublicCollection } from '../api/client'
 import { CollectionView } from '../components/CollectionView'
 import { WishlistView } from '../components/WishlistView'
 import { useI18n } from '../i18n'
-import { CARDS } from '../data/cards'
 import { BRAND_NAME } from '../brand'
 import '../App.css'
 
-const SharedCollectionContext = createContext<PublicCollection | null>(null)
+const SharedCollectionContext = createContext<{ collection: PublicCollection; event: CardTradeEvent } | null>(null)
 
 function useSharedCollection() {
   const value = useContext(SharedCollectionContext)
@@ -18,9 +17,9 @@ function useSharedCollection() {
 }
 
 export function SharedCollectionLayout() {
-  const { slug = '' } = useParams()
+  const { eventSlug = 'summer-party', slug = '' } = useParams()
   const { t } = useI18n()
-  const [collection, setCollection] = useState<PublicCollection | null>(null)
+  const [payload, setPayload] = useState<{ collection: PublicCollection; event: CardTradeEvent } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,13 +28,13 @@ export function SharedCollectionLayout() {
     setLoading(true)
     setError(null)
     void api
-      .getPublicCollection(slug)
+      .getEventPublicCollection(eventSlug, slug)
       .then((data) => {
-        if (!cancelled) setCollection(data)
+        if (!cancelled) setPayload(data)
       })
       .catch((err) => {
         if (!cancelled) {
-          setCollection(null)
+          setPayload(null)
           setError(err instanceof Error ? err.message : 'Not found')
         }
       })
@@ -45,13 +44,13 @@ export function SharedCollectionLayout() {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [eventSlug, slug])
 
   if (loading) {
     return <div className="app-loading">{t('auth.loading')}</div>
   }
 
-  if (error || !collection) {
+  if (error || !payload) {
     return (
       <div className="app app--public">
         <div className="atmosphere" aria-hidden />
@@ -59,7 +58,7 @@ export function SharedCollectionLayout() {
           <section className="panel">
             <p className="panel__error">{t('share.collectionNotFound')}</p>
             <div className="panel__actions">
-              <Link to="/card-trades/collections" className="btn btn--ghost btn--sm">
+              <Link to={`/card-trades/${eventSlug}/collections`} className="btn btn--ghost btn--sm">
                 {t('share.allCollections')}
               </Link>
               <Link to="/card-trades" className="btn btn--primary btn--sm">
@@ -72,27 +71,29 @@ export function SharedCollectionLayout() {
     )
   }
 
+  const { collection, event } = payload
+
   return (
-    <SharedCollectionContext.Provider value={collection}>
+    <SharedCollectionContext.Provider value={{ collection, event }}>
       <div className="app app--public">
         <div className="atmosphere" aria-hidden />
 
         <header className="hero hero--compact">
           <p className="hero__brand">{BRAND_NAME}</p>
           <h1 className="hero__title hero__title--name">{collection.username}</h1>
-          <p className="hero__lead">{t('share.publicCollectionLead')}</p>
+          <p className="hero__lead">{event.name}</p>
         </header>
 
         <nav className="tabs" aria-label={t('app.tabs')}>
           <NavLink
-            to={`/card-trades/collections/${slug}`}
+            to={`/card-trades/${eventSlug}/collections/${slug}`}
             end
             className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
           >
             {t('app.tab.collection')}
           </NavLink>
           <NavLink
-            to={`/card-trades/collections/${slug}/needed`}
+            to={`/card-trades/${eventSlug}/collections/${slug}/needed`}
             className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
           >
             {t('app.tab.wishlist')}
@@ -106,7 +107,7 @@ export function SharedCollectionLayout() {
         <footer className="footer">
           {t('share.collectionFooter', {
             owned: collection.stats.uniqueOwned,
-            total: CARDS.length,
+            total: event.cardCount,
           })}
         </footer>
       </div>
@@ -117,12 +118,14 @@ export function SharedCollectionLayout() {
 const emptyTradeNeed = new Set<string>()
 
 export function SharedCollectionCollectionTab() {
-  const collection = useSharedCollection()
+  const { collection, event } = useSharedCollection()
 
   return (
     <CollectionView
       readOnly
       username={collection.username}
+      cards={event.cards}
+      sets={event.sets}
       owned={collection.owned}
       accounts={collection.accounts}
       neededBy={collection.neededBy}
@@ -134,12 +137,13 @@ export function SharedCollectionCollectionTab() {
 }
 
 export function SharedCollectionNeededTab() {
-  const collection = useSharedCollection()
+  const { collection, event } = useSharedCollection()
 
   return (
     <WishlistView
       readOnly
       accounts={collection.accounts}
+      cards={event.cards}
       neededBy={collection.neededBy}
       owned={collection.owned}
       tradeNeedCardIds={emptyTradeNeed}

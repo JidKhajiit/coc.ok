@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import {
-  CARD_BY_ID,
-  CARDS,
-  rarityLabel,
-} from '../data/cards'
+import { rarityLabel } from '../data/cards'
 import type { Card, PotentialTrade, TradeRecord, TradeSource } from '../types'
 import { localeTag, useI18n, type TranslateFn } from '../i18n'
 import { CardPicker } from './CardPicker'
 
 interface Props {
+  cards: Card[]
   owned: Record<string, number>
   trades: TradeRecord[]
   potentialTrades: PotentialTrade[]
@@ -112,6 +109,7 @@ function tradeSourceLabel(source: TradeSource, t: TranslateFn): string | null {
 const HISTORY_PAGE_SIZE = 5
 
 export function TradesView({
+  cards,
   owned,
   trades,
   potentialTrades,
@@ -155,11 +153,15 @@ export function TradesView({
 
   const tradeable = useMemo(
     () =>
-      CARDS.filter((c) => (owned[c.id] ?? 0) > 1).sort((a, b) => a.number - b.number),
-    [owned],
+      cards.filter((c) => (owned[c.id] ?? 0) > 1).sort((a, b) => a.number - b.number),
+    [cards, owned],
   )
 
-  const allCards = useMemo(() => [...CARDS].sort((a, b) => a.number - b.number), [])
+  const allCards = useMemo(() => [...cards].sort((a, b) => a.number - b.number), [cards])
+  const cardById = useMemo(
+    () => Object.fromEntries(cards.map((card) => [card.id, card])) as Record<string, Card>,
+    [cards],
+  )
 
   const filteredTrades = useMemo(() => {
     if (historyFilter === 'all') return trades
@@ -398,9 +400,9 @@ export function TradesView({
         ) : (
           <ul className="trade-list">
             {potentialTrades.map((trade) => {
-              const g = CARD_BY_ID[trade.givenCardId]
+              const g = cardById[trade.givenCardId]
               if (!g) return null
-              const r = trade.receivedCardId ? CARD_BY_ID[trade.receivedCardId] : undefined
+              const r = trade.receivedCardId ? cardById[trade.receivedCardId] : undefined
               const missing = !canGiveAway(owned[trade.givenCardId] ?? 0)
               return (
                 <li key={trade.id} className="trade-row trade-row--potential">
@@ -611,9 +613,9 @@ export function TradesView({
           <>
             <ul className="trade-list">
               {paginatedTrades.map((trade) => {
-              const g = CARD_BY_ID[trade.givenCardId]
+              const g = cardById[trade.givenCardId]
               if (!g) return null
-              const r = trade.receivedCardId ? CARD_BY_ID[trade.receivedCardId] : undefined
+              const r = trade.receivedCardId ? cardById[trade.receivedCardId] : undefined
               const date = new Date(trade.createdAt)
               const source = tradeSourceOf(trade)
               const sourceLabel = tradeSourceLabel(source, t)

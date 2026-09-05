@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { CARDS, rarityLabel } from '../data/cards'
+import { rarityLabel } from '../data/cards'
 import type { Card, Rarity } from '../types'
 import { createTranslator, useI18n, type Locale, type MessageKey } from '../i18n'
 
 interface Props {
+  cards: Card[]
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   reservedByCard: Record<string, number>
@@ -114,6 +115,7 @@ function buildTemplate(
 }
 
 export function TradeTemplates({
+  cards,
   owned,
   neededBy,
   reservedByCard,
@@ -137,7 +139,7 @@ export function TradeTemplates({
     const missingCards: Card[] = []
     const forTrade: Card[] = []
 
-    for (const c of CARDS) {
+    for (const c of cards) {
       const qty = owned[c.id] ?? 0
       const reserved = reservedByCard[c.id] ?? 0
       const isMissing = qty === 0
@@ -163,7 +165,7 @@ export function TradeTemplates({
       missingCards: noGold(missingCards),
       forTrade: noGold(forTrade),
     }
-  }, [owned, neededBy, reservedByCard, tradeNeedCardIds, excludeGold])
+  }, [cards, owned, neededBy, reservedByCard, tradeNeedCardIds, excludeGold])
 
   const lists: Lists = useMemo(
     () => ({

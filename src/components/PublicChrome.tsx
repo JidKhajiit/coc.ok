@@ -10,9 +10,15 @@ type Props = {
   onLocaleChange: (locale: Locale) => void
   /** Ссылки на коллекции уместны только в контексте трекера, не на главной сайта */
   showCollectionNav?: boolean
+  collectionPath?: string
 }
 
-export function PublicChrome({ locale, onLocaleChange, showCollectionNav = true }: Props) {
+export function PublicChrome({
+  locale,
+  onLocaleChange,
+  showCollectionNav = true,
+  collectionPath = '/card-trades/collections',
+}: Props) {
   const { t } = useI18n()
   const location = useLocation()
   const auth = useAuth()
@@ -29,7 +35,7 @@ export function PublicChrome({ locale, onLocaleChange, showCollectionNav = true 
             {BRAND_NAME}
           </Link>
           {showCollectionNav && (
-            <Link to="/card-trades/collections" className="public-chrome__link">
+            <Link to={collectionPath} className="public-chrome__link">
               {t('share.browseCollections')}
             </Link>
           )}

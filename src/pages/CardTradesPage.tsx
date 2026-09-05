@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useOutletContext } from 'react-router-dom'
-import { CARDS } from '../data/cards'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom'
+import type { CardSet } from '../data/cards'
 import { useAppState } from '../hooks/useAppState'
 import { writeStoredLocale } from '../hooks/usePersistedLocale'
 import { CollectionView } from '../components/CollectionView'
@@ -11,24 +11,35 @@ import { AppToolbar } from '../components/settings/AppToolbar'
 import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSettingsDrawer'
 import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
-import { DAILY_BONUS_TRADE_LIMIT, type TabId } from '../types'
+import { DAILY_BONUS_TRADE_LIMIT, type Card, type TabId } from '../types'
+import type { CardTradeEvent } from '../api/client'
+import * as api from '../api/client'
 import '../App.css'
-
-const TAB_ROUTES: { id: TabId; path: string }[] = [
-  { id: 'collection', path: '/card-trades/summer-party' },
-  { id: 'wishlist', path: '/card-trades/summer-party/wishlist' },
-  { id: 'trades', path: '/card-trades/summer-party/trades' },
-  { id: 'trends', path: '/card-trades/summer-party/trends' },
-]
 
 const SAVE_TOAST_MS = 3000
 
-function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
+function tabRoutes(eventSlug: string): { id: TabId; path: string }[] {
+  return [
+    { id: 'collection', path: `/card-trades/${eventSlug}` },
+    { id: 'wishlist', path: `/card-trades/${eventSlug}/wishlist` },
+    { id: 'trades', path: `/card-trades/${eventSlug}/trades` },
+    { id: 'trends', path: `/card-trades/${eventSlug}/trends` },
+  ]
+}
+
+function CardTradesShell({
+  app,
+  event,
+}: {
+  app: ReturnType<typeof useAppState>
+  event: CardTradeEvent
+}) {
   const { user, logout } = useOutletContext<AuthOutletContext>()
   const [eventSettingsOpen, setEventSettingsOpen] = useState(false)
   const [saveToast, setSaveToast] = useState<string | null>(null)
   const wasSavingRef = useRef(false)
   const { t, locale, setLocale } = useI18n()
+  const routes = useMemo(() => tabRoutes(event.slug), [event.slug])
 
   useEffect(() => {
     writeStoredLocale(normalizeLocale(app.state.locale))
@@ -60,7 +71,8 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
   }, [app.saving, app.saveError, app.lastSaved, t])
 
   const tradesToday = app.stats.tradesToday
-  const collectionPercent = Math.round((app.stats.uniqueOwned / CARDS.length) * 100)
+  const totalCards = event.cards.length
+  const collectionPercent = totalCards > 0 ? Math.round((app.stats.uniqueOwned / totalCards) * 100) : 0
   const tradesGoalClass =
     tradesToday >= DAILY_BONUS_TRADE_LIMIT
       ? tradesToday > DAILY_BONUS_TRADE_LIMIT
@@ -80,6 +92,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         onLocaleChange={handleLocaleChange}
         onEventSettings={() => setEventSettingsOpen(true)}
         showCollectionNav
+        collectionPath={`/card-trades/${event.slug}/collections`}
       />
 
       {saveToast && (
@@ -100,6 +113,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         onCopyBackup={app.copyBackup}
         onImport={app.importBackup}
         onImportText={app.importBackupText}
+        eventSlug={event.slug}
       />
 
       {app.loading ? (
@@ -108,7 +122,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         <>
           <header className="hero">
             <Link to="/card-trades" className="hero__home-link">← {t('app.backToTracker')}</Link>
-            <h1 className="hero__title">{t('app.heroTitle')}</h1>
+            <h1 className="hero__title">{event.name}</h1>
 
             <div className="hero__stats">
               <div
@@ -116,14 +130,14 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
                 aria-label={t('app.stat.collectionAria', {
                   percent: collectionPercent,
                   owned: app.stats.uniqueOwned,
-                  total: CARDS.length,
+                  total: totalCards,
                 })}
               >
                 <strong>{collectionPercent}%</strong>
                 <span>
                   {t('app.stat.collectionDetail', {
                     owned: app.stats.uniqueOwned,
-                    total: CARDS.length,
+                    total: totalCards,
                   })}
                 </span>
               </div>
@@ -161,7 +175,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
           </header>
 
           <nav className="tabs" aria-label={t('app.tabs')}>
-            {TAB_ROUTES.map(({ id, path }) => (
+            {routes.map(({ id, path }) => (
               <NavLink
                 key={id}
                 to={path}
@@ -174,10 +188,10 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
           </nav>
 
           <main className="main">
-            <Outlet context={{ app, user }} />
+            <Outlet context={{ app, user, event }} />
           </main>
 
-          <footer className="footer">{t('app.footer', { cards: CARDS.length })}</footer>
+          <footer className="footer">{t('app.footer', { cards: totalCards })}</footer>
         </>
       )}
     </div>
@@ -187,14 +201,17 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
 export type CardTradesOutletContext = {
   app: ReturnType<typeof useAppState>
   user: { id: string; username: string; permissions: string[] }
+  event: { slug: string; name: string; cards: Card[]; sets: CardSet[] }
 }
 
 export function CardTradesCollectionTab() {
-  const { app, user } = useOutletContext<CardTradesOutletContext>()
+  const { app, user, event } = useOutletContext<CardTradesOutletContext>()
 
   return (
     <CollectionView
       username={user.username}
+      cards={event.cards}
+      sets={event.sets}
       owned={app.state.owned}
       accounts={app.state.accounts}
       neededBy={app.state.neededBy}
@@ -210,11 +227,12 @@ export function CardTradesCollectionTab() {
 }
 
 export function CardTradesWishlistTab() {
-  const { app } = useOutletContext<CardTradesOutletContext>()
+  const { app, event } = useOutletContext<CardTradesOutletContext>()
 
   return (
     <WishlistView
       accounts={app.state.accounts}
+      cards={event.cards}
       neededBy={app.state.neededBy}
       owned={app.state.owned}
       tradeNeedCardIds={app.tradeNeedCardIds}
@@ -226,10 +244,11 @@ export function CardTradesWishlistTab() {
 }
 
 export function CardTradesTradesTab() {
-  const { app } = useOutletContext<CardTradesOutletContext>()
+  const { app, event } = useOutletContext<CardTradesOutletContext>()
 
   return (
     <TradesView
+      cards={event.cards}
       owned={app.state.owned}
       trades={app.state.trades}
       potentialTrades={app.state.potentialTrades}
@@ -259,7 +278,11 @@ export function CardTradesTrendsTab() {
 }
 
 export function CardTradesPage() {
-  const app = useAppState()
+  const { eventSlug = '' } = useParams()
+  const [event, setEvent] = useState<CardTradeEvent | null>(null)
+  const [eventError, setEventError] = useState<string | null>(null)
+  const [eventLoading, setEventLoading] = useState(true)
+  const app = useAppState(eventSlug, event?.cards ?? [])
   const locale = normalizeLocale(app.state.locale)
 
   const setLocale = useCallback(
@@ -274,9 +297,51 @@ export function CardTradesPage() {
     document.documentElement.lang = localeTag(locale)
   }, [locale])
 
+  useEffect(() => {
+    let cancelled = false
+    setEventLoading(true)
+    setEventError(null)
+    void api
+      .getCardTradeEvent(eventSlug)
+      .then((data) => {
+        if (!cancelled) setEvent(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setEvent(null)
+          setEventError(err instanceof Error ? err.message : 'Event not found')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setEventLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [eventSlug])
+
   return (
     <I18nProvider locale={locale} setLocale={setLocale}>
-      <CardTradesShell app={app} />
+      {eventLoading ? (
+        <div className="app-loading">Loading…</div>
+      ) : eventError || !event ? (
+        <div className="app">
+          <div className="atmosphere" aria-hidden />
+          <main className="main">
+            <section className="panel">
+              <p className="panel__error">{eventError ?? 'Event not found'}</p>
+              <div className="panel__actions">
+                <Link to="/card-trades" className="btn btn--primary btn--sm">
+                  Back to tracker
+                </Link>
+              </div>
+            </section>
+          </main>
+        </div>
+      ) : (
+        <CardTradesShell app={app} event={event} />
+      )}
     </I18nProvider>
   )
 }

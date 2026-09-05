@@ -14,9 +14,12 @@ import { createCollectionsRoutes, createShareRoutes } from './routes/collections
 import { createStateRoutes } from './routes/state.js'
 import { createAdminRoutes } from './routes/admin.js'
 import { createCozyFarmRoutes } from './routes/cozyFarm.js'
+import { ensureDefaultCardTradeEvent } from './lib/cardTradeEvents.js'
+import { createCardTradesRoutes } from './routes/cardTrades.js'
 
 const env = loadEnv()
 const { db, client } = createDb(env.DATABASE_URL)
+await ensureDefaultCardTradeEvent(db)
 
 const app = new Hono<{ Variables: AppVariables }>()
 
@@ -28,6 +31,7 @@ app.get('/api/health', (c) => c.json({ ok: true }))
 const api = new Hono<{ Variables: AppVariables }>()
 api.route('/auth', createAuthRoutes(db, env))
 api.route('/state', createStateRoutes(db))
+api.route('/card-trades', createCardTradesRoutes(db))
 api.route('/card-trades/collections', createCollectionsRoutes(db))
 api.route('/card-trades/share', createShareRoutes(db))
 api.route('/admin', createAdminRoutes(db))

@@ -4,11 +4,10 @@ import * as api from '../api/client'
 import type { PublicCollectionSummary } from '../api/client'
 import { PublicAppShell } from '../components/PublicAppShell'
 import { useI18n } from '../i18n'
-import { CARDS } from '../data/cards'
 import { BRAND_NAME } from '../brand'
 import '../App.css'
 
-function SharedCollectionsList() {
+function SharedCollectionsList({ eventSlug }: { eventSlug: string }) {
   const { t } = useI18n()
   const [collections, setCollections] = useState<PublicCollectionSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -17,7 +16,7 @@ function SharedCollectionsList() {
   useEffect(() => {
     let cancelled = false
     void api
-      .listPublicCollections()
+      .listEventPublicCollections(eventSlug)
       .then((data) => {
         if (!cancelled) setCollections(data)
       })
@@ -32,7 +31,7 @@ function SharedCollectionsList() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [eventSlug])
 
   return (
     <div className="app app--public">
@@ -54,12 +53,12 @@ function SharedCollectionsList() {
           <ul className="share-list">
             {collections.map((item) => (
               <li key={item.slug}>
-                <Link to={`/card-trades/collections/${item.slug}`} className="share-list__item">
+                <Link to={`/card-trades/${eventSlug}/collections/${item.slug}`} className="share-list__item">
                   <strong>{item.username}</strong>
                   <span>
                     {t('share.collectionStats', {
                       owned: item.stats.uniqueOwned,
-                      total: CARDS.length,
+                      total: item.event.cardCount,
                       needed: item.stats.neededCount,
                     })}
                   </span>
@@ -73,10 +72,10 @@ function SharedCollectionsList() {
   )
 }
 
-export function SharedCollectionsListPage() {
+export function SharedCollectionsListPage({ eventSlug }: { eventSlug: string }) {
   return (
     <PublicAppShell>
-      <SharedCollectionsList />
+      <SharedCollectionsList eventSlug={eventSlug} />
     </PublicAppShell>
   )
 }
