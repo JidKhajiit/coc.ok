@@ -338,7 +338,7 @@ const ru: Dict = {
   'cozyFarm.fruit.phantom': 'Фантом',
   'cozyFarm.fruit.cranberry': 'Клюква',
   'cozyFarm.fruit.orange': 'Апельсин',
-  'cozyFarm.boardTitle': 'UID для кормления',
+  'cozyFarm.boardTitle': 'Поддержка',
   'cozyFarm.boardHint':
     'Можно опубликовать несколько игровых UID с бонусами татари по фруктам (%). Нужен хотя бы один бонус.',
   'cozyFarm.boardFruitHint':
@@ -693,7 +693,7 @@ const en: Dict = {
   'cozyFarm.fruit.phantom': 'Phantom',
   'cozyFarm.fruit.cranberry': 'Cranberry',
   'cozyFarm.fruit.orange': 'Orange',
-  'cozyFarm.boardTitle': 'UIDs for feeding',
+  'cozyFarm.boardTitle': 'Support',
   'cozyFarm.boardHint':
     'You can publish multiple game UIDs with Tatari bonuses per fruit (%). At least one bonus is required.',
   'cozyFarm.boardFruitHint':

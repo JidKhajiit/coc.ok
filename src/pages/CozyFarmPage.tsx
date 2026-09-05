@@ -90,6 +90,9 @@ function CozyFarmShell() {
 
   const isSuperadmin = user.permissions.includes('roles:manage')
   const isAdmin = user.permissions.includes('admin:access')
+  const canManageListing = (listing: CozyFarmListing) =>
+    listing.userId === user.id || isAdmin
+  const showManageColumn = isAdmin || listings.some((l) => l.userId === user.id)
   const emptyBonuses = (): Record<CozyFarmFruit, string> => ({
     dragonfruit: '',
     carrot: '',
@@ -426,13 +429,14 @@ function CozyFarmShell() {
                     )
                   })}
                   <th>{t('cozyFarm.rating')}</th>
-                  {isAdmin && <th />}
+                  {showManageColumn && <th />}
                 </tr>
               </thead>
               <tbody>
                 {sortedListings.map((listing) => {
                   const score = listing.likes - listing.dislikes
                   const canVote = listing.userId !== user.id || isSuperadmin
+                  const canManage = canManageListing(listing)
                   const ratingDetail = t('cozyFarm.ratingDetail', {
                     likes: listing.likes,
                     dislikes: listing.dislikes,
@@ -500,41 +504,43 @@ function CozyFarmShell() {
                         )}
                       </div>
                     </td>
-                    {isAdmin && (
+                    {showManageColumn && (
                       <td>
-                        <div className="cozy-admin-actions">
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            disabled={saving}
-                            onClick={() => startEdit(listing)}
-                            title={t('cozyFarm.edit')}
-                            aria-label={t('cozyFarm.edit')}
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn--danger"
-                            disabled={saving}
-                            onClick={() => void onDeleteListing(listing)}
-                            title={t('cozyFarm.delete')}
-                            aria-label={t('cozyFarm.delete')}
-                          >
-                            <svg
-                              className="icon-btn__svg"
-                              viewBox="0 0 16 16"
-                              width={14}
-                              height={14}
-                              aria-hidden
+                        {canManage && (
+                          <div className="cozy-admin-actions">
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              disabled={saving}
+                              onClick={() => startEdit(listing)}
+                              title={t('cozyFarm.edit')}
+                              aria-label={t('cozyFarm.edit')}
                             >
-                              <path
-                                fill="currentColor"
-                                d="M5.5 1a.5.5 0 0 0-.5.5V2H2.5a.5.5 0 0 0 0 1H3v9.5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5V3h.5a.5.5 0 0 0 0-1H11v-.5a.5.5 0 0 0-.5-.5h-5ZM5 3h6v9.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5V3Zm1.5 1.5a.5.5 0 0 0-.5.5v6a.5.5 0 0 0 1 0v-6a.5.5 0 0 0-.5-.5Zm3 0a.5.5 0 0 0-.5.5v6a.5.5 0 0 0 1 0v-6a.5.5 0 0 0-.5-.5Z"
-                              />
-                            </svg>
-                          </button>
-                        </div>
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn--danger"
+                              disabled={saving}
+                              onClick={() => void onDeleteListing(listing)}
+                              title={t('cozyFarm.delete')}
+                              aria-label={t('cozyFarm.delete')}
+                            >
+                              <svg
+                                className="icon-btn__svg"
+                                viewBox="0 0 16 16"
+                                width={14}
+                                height={14}
+                                aria-hidden
+                              >
+                                <path
+                                  fill="currentColor"
+                                  d="M5.5 1a.5.5 0 0 0-.5.5V2H2.5a.5.5 0 0 0 0 1H3v9.5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5V3h.5a.5.5 0 0 0 0-1H11v-.5a.5.5 0 0 0-.5-.5h-5ZM5 3h6v9.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5V3Zm1.5 1.5a.5.5 0 0 0-.5.5v6a.5.5 0 0 0 1 0v-6a.5.5 0 0 0-.5-.5Zm3 0a.5.5 0 0 0-.5.5v6a.5.5 0 0 0 1 0v-6a.5.5 0 0 0-.5-.5Z"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                     )}
                   </tr>
