@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { AppState } from '../../../shared/types.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,4 +84,40 @@ export const userRoles = pgTable(
       .references(() => roles.id, { onDelete: 'cascade' }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.roleId] })],
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cozy Farm
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const cozyFarmListings = pgTable('cozy_farm_listings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  gameUid: text('game_uid').notNull(),
+  bonusDragonfruit: real('bonus_dragonfruit'),
+  bonusCarrot: real('bonus_carrot'),
+  bonusBamboo: real('bonus_bamboo'),
+  bonusPhantom: real('bonus_phantom'),
+  bonusCranberry: real('bonus_cranberry'),
+  bonusOrange: real('bonus_orange'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const cozyFarmVotes = pgTable(
+  'cozy_farm_votes',
+  {
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => cozyFarmListings.id, { onDelete: 'cascade' }),
+    voterUserId: uuid('voter_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    value: integer('value').notNull(), // 1 = like, -1 = dislike
+    /** Regular users: always 1. Superadmin may stack multiple reactions. */
+    weight: integer('weight').notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.listingId, t.voterUserId] })],
 )

@@ -14,8 +14,10 @@
 
 | Путь | Описание |
 |------|----------|
-| `/` | Редирект на `/card-trades` |
-| `/card-trades` | Ваше приложение (коллекция, обмены, тренды) |
+| `/` | Главная сайта — гайды, база данных, ресурсы |
+| `/card-trades` | Хаб трекера — навигация по карточным эвентам |
+| `/card-trades/summer-party` | Эвент «Летняя вечеринка» (коллекция, обмены, тренды) |
+| `/cozy-farm` | Эвент «Уютная ферма» (инфо, калькулятор, UID-борда) |
 | `/card-trades/collections` | Список публичных коллекций игроков |
 | `/card-trades/collections/:slug` | Просмотр коллекции игрока (только чтение) |
 | `/admin-panel` | Админ-панель (только с правами `admin:access`) |
@@ -81,8 +83,8 @@ PostgreSQL доступен только внутри Docker-сети — пор
 | `SMTP_HOST` | SMTP-сервер (если пусто — письма в лог сервера) |
 | `SMTP_FROM` | Адрес отправителя |
 | `ALLOW_REGISTRATION` | `true` / `false` — разрешить регистрацию |
-| `TRUST_PROXY` | `true` если за reverse proxy |
-| `COOKIE_SECURE` | `true` для HTTPS-only cookies |
+| `TRUST_PROXY` | `true` если за reverse proxy (иначе `X-Forwarded-For` игнорируется) |
+| `COOKIE_SECURE` | `true` для HTTPS-only cookies (на HTTP оставляйте `false`) |
 | `PORT` | Порт сервера (по умолчанию 3000) |
 
 ## Регистрация и email

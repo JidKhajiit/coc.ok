@@ -22,6 +22,41 @@
       "when": 1756675200000,
       "tag": "0002_email_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1756900000000,
+      "tag": "0003_rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1757000000000,
+      "tag": "0004_cozy_farm",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1757100000000,
+      "tag": "0005_cozy_farm_vote_weight",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1757200000000,
+      "tag": "0006_cozy_farm_multi_listings",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1757300000000,
+      "tag": "0007_cozy_farm_drop_user_uid_key",
+      "breakpoints": true
     }
   ]
 }

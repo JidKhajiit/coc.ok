@@ -36,6 +36,71 @@ const updateRoleSchema = z.object({
   permissionIds: z.array(uuidSchema).optional(),
 })
 
+const backupImportSchema = z.object({
+  version: z.number().optional(),
+  exportedAt: z.string().optional(),
+  data: z.object({
+    users: z
+      .array(
+        z.object({
+          id: uuidSchema,
+          username: z.string().min(1).max(64),
+          email: z.string().nullable(),
+          emailVerified: z.boolean(),
+          passwordHash: z.string().min(1),
+          createdAt: z.string().min(1),
+        }),
+      )
+      .default([]),
+    userStates: z
+      .array(
+        z.object({
+          userId: uuidSchema,
+          data: z.unknown(),
+          updatedAt: z.string().min(1),
+          shareEnabled: z.boolean(),
+          shareSlug: z.string().nullable(),
+        }),
+      )
+      .default([]),
+    roles: z
+      .array(
+        z.object({
+          id: uuidSchema,
+          name: z.string().min(1).max(64),
+          description: z.string().nullable(),
+          isSystem: z.boolean(),
+        }),
+      )
+      .default([]),
+    permissions: z
+      .array(
+        z.object({
+          id: uuidSchema,
+          name: z.string().min(1).max(128),
+          description: z.string().nullable(),
+        }),
+      )
+      .default([]),
+    userRoles: z
+      .array(
+        z.object({
+          userId: uuidSchema,
+          roleId: uuidSchema,
+        }),
+      )
+      .default([]),
+    rolePermissions: z
+      .array(
+        z.object({
+          roleId: uuidSchema,
+          permissionId: uuidSchema,
+        }),
+      )
+      .default([]),
+  }),
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +167,13 @@ export function createAdminRoutes(db: Db) {
     }
 
     const { roleIds } = parsed.data
+    const currentUser = c.get('user')!
+    const canManageRoles = currentUser.permissions.includes('roles:manage')
+
+    // Only roles:manage may change their own roles (prevents self-escalation by admins).
+    if (currentUser.id === userId && !canManageRoles) {
+      return c.json({ error: 'Cannot change your own roles' }, 403)
+    }
 
     // Check that user exists
     const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1)
@@ -112,11 +184,30 @@ export function createAdminRoutes(db: Db) {
     // Validate that all roleIds exist
     if (roleIds.length > 0) {
       const existingRoles = await db
-        .select({ id: roles.id })
+        .select({ id: roles.id, name: roles.name })
         .from(roles)
         .where(inArray(roles.id, roleIds))
       if (existingRoles.length !== roleIds.length) {
         return c.json({ error: 'One or more roles not found' }, 400)
+      }
+
+      // Without roles:manage, may only assign roles whose permissions ⊆ actor permissions.
+      if (!canManageRoles) {
+        const targetPerms = await db
+          .selectDistinct({ name: permissions.name, roleId: rolePermissions.roleId })
+          .from(rolePermissions)
+          .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+          .where(inArray(rolePermissions.roleId, roleIds))
+
+        const actorPerms = new Set(currentUser.permissions)
+        for (const perm of targetPerms) {
+          if (!actorPerms.has(perm.name)) {
+            return c.json(
+              { error: 'Cannot assign a role with permissions you do not have' },
+              403,
+            )
+          }
+        }
       }
     }
 
@@ -255,12 +346,22 @@ export function createAdminRoutes(db: Db) {
 
     // Check role exists
     const [role] = await db
-      .select({ id: roles.id, isSystem: roles.isSystem })
+      .select({ id: roles.id, isSystem: roles.isSystem, name: roles.name })
       .from(roles)
       .where(eq(roles.id, roleId))
       .limit(1)
     if (!role) {
       return c.json({ error: 'Role not found' }, 404)
+    }
+
+    // System roles: name and permissions are immutable (description only).
+    if (role.isSystem) {
+      if (name !== undefined && name !== role.name) {
+        return c.json({ error: 'Cannot rename system role' }, 400)
+      }
+      if (permissionIds !== undefined) {
+        return c.json({ error: 'Cannot change permissions of system role' }, 400)
+      }
     }
 
     // Check name uniqueness if changing
@@ -288,15 +389,15 @@ export function createAdminRoutes(db: Db) {
 
     // Update role fields
     const updates: { name?: string; description?: string | null } = {}
-    if (name !== undefined) updates.name = name
+    if (name !== undefined && !role.isSystem) updates.name = name
     if (description !== undefined) updates.description = description ?? null
 
     if (Object.keys(updates).length > 0) {
       await db.update(roles).set(updates).where(eq(roles.id, roleId))
     }
 
-    // Update permissions if provided
-    if (permissionIds !== undefined) {
+    // Update permissions if provided (non-system only)
+    if (permissionIds !== undefined && !role.isSystem) {
       await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId))
       if (permissionIds.length > 0) {
         await db.insert(rolePermissions).values(
@@ -389,150 +490,78 @@ export function createAdminRoutes(db: Db) {
     return c.json(backup)
   })
 
-  // POST /backup — import database from JSON backup
+  // POST /backup — replace database contents from JSON backup (transactional)
   app.post('/backup', requirePermission('roles:manage'), async (c) => {
     const body = await c.req.json().catch(() => null)
-    if (!body || typeof body !== 'object' || !body.data) {
+    const parsed = backupImportSchema.safeParse(body)
+    if (!parsed.success) {
       return c.json({ error: 'Invalid backup format' }, 400)
     }
 
-    const { data } = body as {
-      data: {
-        users?: Array<{
-          id: string
-          username: string
-          email: string | null
-          emailVerified: boolean
-          passwordHash: string
-          createdAt: string
-        }>
-        userStates?: Array<{
-          userId: string
-          data: unknown
-          updatedAt: string
-          shareEnabled: boolean
-          shareSlug: string | null
-        }>
-        roles?: Array<{
-          id: string
-          name: string
-          description: string | null
-          isSystem: boolean
-        }>
-        permissions?: Array<{
-          id: string
-          name: string
-          description: string | null
-        }>
-        userRoles?: Array<{ userId: string; roleId: string }>
-        rolePermissions?: Array<{ roleId: string; permissionId: string }>
-      }
-    }
+    const { data } = parsed.data
 
     try {
-      // Import in correct order due to foreign keys
-      // 1. Permissions (no deps)
-      if (data.permissions?.length) {
-        for (const perm of data.permissions) {
-          await db
-            .insert(permissions)
-            .values(perm)
-            .onConflictDoUpdate({
-              target: permissions.id,
-              set: { name: perm.name, description: perm.description },
-            })
-        }
-      }
+      await db.transaction(async (tx) => {
+        // Clear join tables and dependent data first (FK order).
+        await tx.delete(userRoles)
+        await tx.delete(rolePermissions)
+        await tx.delete(userStates)
+        await tx.delete(users)
+        await tx.delete(roles)
+        await tx.delete(permissions)
 
-      // 2. Roles (no deps)
-      if (data.roles?.length) {
-        for (const role of data.roles) {
-          await db
-            .insert(roles)
-            .values(role)
-            .onConflictDoUpdate({
-              target: roles.id,
-              set: { name: role.name, description: role.description, isSystem: role.isSystem },
-            })
+        if (data.permissions.length > 0) {
+          await tx.insert(permissions).values(data.permissions)
         }
-      }
 
-      // 3. Role-Permission mappings
-      if (data.rolePermissions?.length) {
-        for (const rp of data.rolePermissions) {
-          await db
-            .insert(rolePermissions)
-            .values(rp)
-            .onConflictDoNothing()
+        if (data.roles.length > 0) {
+          await tx.insert(roles).values(data.roles)
         }
-      }
 
-      // 4. Users
-      if (data.users?.length) {
-        for (const user of data.users) {
-          await db
-            .insert(users)
-            .values({
+        if (data.rolePermissions.length > 0) {
+          await tx.insert(rolePermissions).values(data.rolePermissions)
+        }
+
+        if (data.users.length > 0) {
+          await tx.insert(users).values(
+            data.users.map((user) => ({
               ...user,
               createdAt: new Date(user.createdAt),
-            })
-            .onConflictDoUpdate({
-              target: users.id,
-              set: {
-                username: user.username,
-                email: user.email,
-                emailVerified: user.emailVerified,
-                passwordHash: user.passwordHash,
-              },
-            })
+            })),
+          )
         }
-      }
 
-      // 5. User-Role mappings
-      if (data.userRoles?.length) {
-        for (const ur of data.userRoles) {
-          await db
-            .insert(userRoles)
-            .values(ur)
-            .onConflictDoNothing()
+        if (data.userRoles.length > 0) {
+          await tx.insert(userRoles).values(data.userRoles)
         }
-      }
 
-      // 6. User states
-      if (data.userStates?.length) {
-        for (const state of data.userStates) {
-          await db
-            .insert(userStates)
-            .values({
+        if (data.userStates.length > 0) {
+          await tx.insert(userStates).values(
+            data.userStates.map((state) => ({
               userId: state.userId,
               data: state.data as AppState,
               updatedAt: new Date(state.updatedAt),
               shareEnabled: state.shareEnabled,
               shareSlug: state.shareSlug,
-            })
-            .onConflictDoUpdate({
-              target: userStates.userId,
-              set: {
-                data: state.data as AppState,
-                updatedAt: new Date(state.updatedAt),
-                shareEnabled: state.shareEnabled,
-                shareSlug: state.shareSlug,
-              },
-            })
+            })),
+          )
         }
-      }
+      })
 
-      return c.json({ ok: true, imported: {
-        users: data.users?.length ?? 0,
-        userStates: data.userStates?.length ?? 0,
-        roles: data.roles?.length ?? 0,
-        permissions: data.permissions?.length ?? 0,
-        userRoles: data.userRoles?.length ?? 0,
-        rolePermissions: data.rolePermissions?.length ?? 0,
-      }})
+      return c.json({
+        ok: true,
+        imported: {
+          users: data.users.length,
+          userStates: data.userStates.length,
+          roles: data.roles.length,
+          permissions: data.permissions.length,
+          userRoles: data.userRoles.length,
+          rolePermissions: data.rolePermissions.length,
+        },
+      })
     } catch (err) {
       console.error('Backup import error:', err)
-      return c.json({ error: err instanceof Error ? err.message : 'Import failed' }, 500)
+      return c.json({ error: 'Import failed' }, 500)
     }
   })
 

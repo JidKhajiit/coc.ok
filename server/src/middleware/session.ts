@@ -59,7 +59,7 @@ export function createSessionMiddleware(db: Db, env: Env) {
         }
       } else if (row) {
         await db.delete(sessions).where(eq(sessions.id, sessionId))
-        deleteCookie(c, SESSION_COOKIE, cookieOptions(env, false))
+        deleteCookie(c, SESSION_COOKIE, cookieOptions(env))
       }
     }
 
@@ -71,7 +71,8 @@ export function createSessionMiddleware(db: Db, env: Env) {
 export function cookieOptions(env: Env, httpOnly = true) {
   return {
     httpOnly,
-    secure: env.COOKIE_SECURE || env.NODE_ENV === 'production',
+    // Only when explicitly enabled — NODE_ENV=production alone must not force Secure on plain HTTP.
+    secure: Boolean(env.COOKIE_SECURE),
     sameSite: 'Strict' as const,
     path: '/',
     maxAge: SESSION_DAYS * 24 * 60 * 60,
@@ -103,7 +104,11 @@ export async function destroySession(
   if (sessionId) {
     await db.delete(sessions).where(eq(sessions.id, sessionId))
   }
-  deleteCookie(c, SESSION_COOKIE, cookieOptions(env, false))
+  deleteCookie(c, SESSION_COOKIE, cookieOptions(env))
+}
+
+export async function destroyUserSessions(db: Db, userId: string) {
+  await db.delete(sessions).where(eq(sessions.userId, userId))
 }
 
 export async function cleanupExpiredSessions(db: Db) {

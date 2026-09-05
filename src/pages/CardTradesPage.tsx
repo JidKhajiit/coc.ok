@@ -11,15 +11,14 @@ import { AppToolbar } from '../components/settings/AppToolbar'
 import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSettingsDrawer'
 import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
-import { BRAND_NAME } from '../brand'
 import { DAILY_BONUS_TRADE_LIMIT, type TabId } from '../types'
 import '../App.css'
 
 const TAB_ROUTES: { id: TabId; path: string }[] = [
-  { id: 'collection', path: '/card-trades' },
-  { id: 'wishlist', path: '/card-trades/wishlist' },
-  { id: 'trades', path: '/card-trades/trades' },
-  { id: 'trends', path: '/card-trades/trends' },
+  { id: 'collection', path: '/card-trades/summer-party' },
+  { id: 'wishlist', path: '/card-trades/summer-party/wishlist' },
+  { id: 'trades', path: '/card-trades/summer-party/trades' },
+  { id: 'trends', path: '/card-trades/summer-party/trends' },
 ]
 
 const SAVE_TOAST_MS = 3000
@@ -80,6 +79,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         locale={locale}
         onLocaleChange={handleLocaleChange}
         onEventSettings={() => setEventSettingsOpen(true)}
+        showCollectionNav
       />
 
       {saveToast && (
@@ -107,9 +107,8 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
       ) : (
         <>
           <header className="hero">
-            <p className="hero__brand">{BRAND_NAME}</p>
+            <Link to="/card-trades" className="hero__home-link">← {t('app.backToTracker')}</Link>
             <h1 className="hero__title">{t('app.heroTitle')}</h1>
-            <p className="hero__lead">{t('app.heroLead')}</p>
 
             <div className="hero__stats">
               <div
@@ -159,11 +158,6 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
               </div>
             </div>
 
-            <p className="hero__links">
-              <Link to="/card-trades/collections" className="hero__link">
-                {t('share.browseCollections')}
-              </Link>
-            </p>
           </header>
 
           <nav className="tabs" aria-label={t('app.tabs')}>

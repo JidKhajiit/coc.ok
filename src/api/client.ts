@@ -270,3 +270,73 @@ export async function importDatabaseBackup(
     body: JSON.stringify(backup),
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cozy Farm
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CozyFarmListing = {
+  id: string
+  userId: string
+  username: string
+  gameUid: string
+  bonusDragonfruit: number | null
+  bonusCarrot: number | null
+  bonusBamboo: number | null
+  bonusPhantom: number | null
+  bonusCranberry: number | null
+  bonusOrange: number | null
+  likes: number
+  dislikes: number
+  myVote: 1 | -1 | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CozyFarmListingInput = {
+  gameUid: string
+  bonusDragonfruit?: number | null
+  bonusCarrot?: number | null
+  bonusBamboo?: number | null
+  bonusPhantom?: number | null
+  bonusCranberry?: number | null
+  bonusOrange?: number | null
+}
+
+export async function listCozyFarmListings(): Promise<CozyFarmListing[]> {
+  const { listings } = await request<{ listings: CozyFarmListing[] }>('/api/cozy-farm/listings')
+  return listings
+}
+
+export async function createCozyFarmListing(
+  data: CozyFarmListingInput,
+): Promise<{ listing: unknown }> {
+  return request('/api/cozy-farm/listings', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateCozyFarmListing(
+  id: string,
+  data: CozyFarmListingInput,
+): Promise<{ listing: unknown }> {
+  return request(`/api/cozy-farm/listings/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteCozyFarmListing(id: string): Promise<void> {
+  await request(`/api/cozy-farm/listings/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function voteCozyFarmListing(
+  id: string,
+  value: 1 | -1 | 0,
+): Promise<{ myVote: 1 | -1 | null }> {
+  return request(`/api/cozy-farm/listings/${encodeURIComponent(id)}/vote`, {
+    method: 'POST',
+    body: JSON.stringify({ value }),
+  })
+}

@@ -105,11 +105,16 @@ export function useAppState() {
 
     saveTimerRef.current = setTimeout(() => {
       setSaving(true)
+      const snapshot = state
       void api
-        .putState(state)
+        .putState(snapshot)
         .then((saved) => {
-          setState(saved)
-          skipSaveRef.current = true
+          setState((current) => {
+            // Ignore stale responses if the user edited while the request was in flight.
+            if (current !== snapshot) return current
+            skipSaveRef.current = true
+            return saved
+          })
           setLastSaved(true)
           setSaveError(null)
         })

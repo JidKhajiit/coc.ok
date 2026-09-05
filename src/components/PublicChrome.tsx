@@ -8,27 +8,31 @@ import { SiteSettingsDrawer } from './settings/SiteSettingsDrawer'
 type Props = {
   locale: Locale
   onLocaleChange: (locale: Locale) => void
+  /** Ссылки на коллекции уместны только в контексте трекера, не на главной сайта */
+  showCollectionNav?: boolean
 }
 
-export function PublicChrome({ locale, onLocaleChange }: Props) {
+export function PublicChrome({ locale, onLocaleChange, showCollectionNav = true }: Props) {
   const { t } = useI18n()
   const location = useLocation()
   const auth = useAuth()
   const [siteOpen, setSiteOpen] = useState(false)
 
   const onLoginPage = location.pathname === '/card-trades' && auth.status === 'unauthenticated'
-  const showAppCta = auth.status !== 'loading' && !onLoginPage
+  const showAppCta = showCollectionNav && auth.status !== 'loading' && !onLoginPage
 
   return (
     <>
       <header className="public-chrome">
         <nav className="public-chrome__nav" aria-label={t('nav.public')}>
-          <Link to="/card-trades" className="public-chrome__brand">
+          <Link to="/" className="public-chrome__brand">
             {BRAND_NAME}
           </Link>
-          <Link to="/card-trades/collections" className="public-chrome__link">
-            {t('share.browseCollections')}
-          </Link>
+          {showCollectionNav && (
+            <Link to="/card-trades/collections" className="public-chrome__link">
+              {t('share.browseCollections')}
+            </Link>
+          )}
         </nav>
 
         <div className="public-chrome__actions">
@@ -63,6 +67,7 @@ export function PublicChrome({ locale, onLocaleChange }: Props) {
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={auth.user?.username}
+        permissions={auth.user?.permissions}
         onLogout={auth.user ? auth.logout : undefined}
         locale={locale}
         onLocaleChange={onLocaleChange}
