@@ -33,6 +33,7 @@ const CURRENT_EVENTS: SiteEvent[] = [
     name: { ru: 'Уютная ферма', en: 'Cozy Farm' },
     start: '2026-09-03',
     end: '2026-09-05',
+    path: '/cozy-farm',
   },
   {
     id: 'summer-party',

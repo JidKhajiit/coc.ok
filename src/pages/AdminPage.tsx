@@ -48,7 +48,7 @@ function AdminShell() {
 
       <header className="admin-header">
         <div className="admin-header__left">
-          <Link to="/card-trades" className="admin-header__back">
+          <Link to="/" className="admin-header__back">
             ← {BRAND_NAME}
           </Link>
           <h1 className="admin-header__title">Админ-панель</h1>

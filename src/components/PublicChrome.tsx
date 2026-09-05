@@ -25,7 +25,7 @@ export function PublicChrome({ locale, onLocaleChange, showCollectionNav = true 
     <>
       <header className="public-chrome">
         <nav className="public-chrome__nav" aria-label={t('nav.public')}>
-          <Link to={showCollectionNav ? '/card-trades' : '/'} className="public-chrome__brand">
+          <Link to="/" className="public-chrome__brand">
             {BRAND_NAME}
           </Link>
           {showCollectionNav && (

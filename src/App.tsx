@@ -18,6 +18,7 @@ import {
 } from './pages/SharedCollectionPage'
 import { SharedCollectionsListPage } from './pages/SharedCollectionsListPage'
 import { VerifyEmailPage, ResetPasswordPage } from './pages/AuthEmailPages'
+import { CozyFarmPage } from './pages/CozyFarmPage'
 import { PublicAppShell } from './components/PublicAppShell'
 
 export default function App() {
@@ -56,6 +57,11 @@ export default function App() {
 
       {/* Card Trades hub */}
       <Route path="/card-trades" element={<CardTradesHubPage />} />
+
+      {/* Cozy Farm event */}
+      <Route path="/cozy-farm" element={<RequireAuth />}>
+        <Route index element={<CozyFarmPage />} />
+      </Route>
 
       {/* Admin panel */}
       <Route path="/admin-panel" element={<RequirePermission permission="admin:access" />}>

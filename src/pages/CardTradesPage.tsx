@@ -79,6 +79,7 @@ function CardTradesShell({ app }: { app: ReturnType<typeof useAppState> }) {
         locale={locale}
         onLocaleChange={handleLocaleChange}
         onEventSettings={() => setEventSettingsOpen(true)}
+        showCollectionNav
       />
 
       {saveToast && (

@@ -11,9 +11,19 @@ type Props = {
   locale: Locale
   onLocaleChange: (locale: Locale) => void
   onEventSettings?: () => void
+  /** Коллекции игроков — только в контексте card-trades, не на других эвентах */
+  showCollectionNav?: boolean
 }
 
-export function AppToolbar({ username, permissions, onLogout, locale, onLocaleChange, onEventSettings }: Props) {
+export function AppToolbar({
+  username,
+  permissions,
+  onLogout,
+  locale,
+  onLocaleChange,
+  onEventSettings,
+  showCollectionNav = false,
+}: Props) {
   const { t } = useI18n()
   const [siteOpen, setSiteOpen] = useState(false)
   const signedIn = Boolean(username)
@@ -25,9 +35,11 @@ export function AppToolbar({ username, permissions, onLogout, locale, onLocaleCh
           <Link to="/" className="app-toolbar__brand">
             {BRAND_NAME}
           </Link>
-          <Link to="/card-trades/collections" className="app-toolbar__link">
-            {t('share.browseCollections')}
-          </Link>
+          {showCollectionNav && (
+            <Link to="/card-trades/collections" className="app-toolbar__link">
+              {t('share.browseCollections')}
+            </Link>
+          )}
         </nav>
 
         <div className="app-toolbar__actions">
