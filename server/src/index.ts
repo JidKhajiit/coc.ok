@@ -34,7 +34,7 @@ api.route('/state', createStateRoutes(db))
 api.route('/card-trades', createCardTradesRoutes(db))
 api.route('/card-trades/collections', createCollectionsRoutes(db))
 api.route('/card-trades/share', createShareRoutes(db))
-api.route('/admin', createAdminRoutes(db))
+api.route('/admin', createAdminRoutes(db, client))
 api.route('/cozy-farm', createCozyFarmRoutes(db))
 app.route('/api', api)
 

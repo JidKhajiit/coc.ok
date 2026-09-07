@@ -396,14 +396,7 @@ export async function updateAdminCardTradeEvent(
 export type DatabaseBackup = {
   version: number
   exportedAt: string
-  data: {
-    users: unknown[]
-    userStates: unknown[]
-    roles: unknown[]
-    permissions: unknown[]
-    userRoles: unknown[]
-    rolePermissions: unknown[]
-  }
+  data: Record<string, unknown[]>
 }
 
 export async function exportDatabaseBackup(): Promise<DatabaseBackup> {

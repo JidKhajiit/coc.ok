@@ -19,8 +19,8 @@ type SiteEvent = {
   path?: string
 }
 
-/** Текущие события — даты от пользователя, 2026-09-03 */
-const CURRENT_EVENTS: SiteEvent[] = [
+/** События вне card-trades, которые пока не приходят из API */
+const STATIC_EVENTS: SiteEvent[] = [
   {
     id: 'gold-rush-sea-ruffians',
     name: {
@@ -31,20 +31,17 @@ const CURRENT_EVENTS: SiteEvent[] = [
     end: '2026-09-08',
   },
   {
+    id: 'fishing-race',
+    name: { ru: 'Рыбацкая гонка', en: 'Fishing Race' },
+    start: '2026-09-06',
+    end: '2026-09-08',
+  },
+  {
     id: 'cozy-farm',
     name: { ru: 'Уютная ферма', en: 'Cozy Farm' },
     start: '2026-09-03',
     end: '2026-09-05',
     path: '/cozy-farm',
-  },
-]
-
-const UPCOMING_EVENTS: SiteEvent[] = [
-  {
-    id: 'fishing-race',
-    name: { ru: 'Рыбацкая гонка', en: 'Fishing Race' },
-    start: '2026-09-06',
-    end: '2026-09-08',
   },
 ]
 
@@ -112,6 +109,14 @@ function parseIsoDate(iso: string): Date {
   return new Date(y, m - 1, d)
 }
 
+function getTodayIso(): string {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function formatDate(iso: string, isRu: boolean): string {
   const date = parseIsoDate(iso)
   return date.toLocaleDateString(isRu ? 'ru-RU' : 'en-US', {
@@ -136,6 +141,17 @@ function daysUntil(iso: string): number {
   today.setHours(0, 0, 0, 0)
   target.setHours(0, 0, 0, 0)
   return Math.max(0, Math.round((target.getTime() - today.getTime()) / 86_400_000))
+}
+
+function isCurrentEvent(event: SiteEvent, todayIso: string): boolean {
+  if (event.start) {
+    return event.start <= todayIso && todayIso <= event.end
+  }
+  return todayIso <= event.end
+}
+
+function isUpcomingEvent(event: SiteEvent, todayIso: string): boolean {
+  return Boolean(event.start && todayIso < event.start)
 }
 
 function EventList({
@@ -208,6 +224,7 @@ function HomeContent() {
   const { locale, setLocale } = usePersistedLocale()
   const isRu = locale === 'ru'
   const [cardTradeEvents, setCardTradeEvents] = useState<SiteEvent[]>([])
+  const [todayIso, setTodayIso] = useState(() => getTodayIso())
 
   useEffect(() => {
     let cancelled = false
@@ -217,7 +234,6 @@ function HomeContent() {
         if (cancelled) return
         setCardTradeEvents(
           events
-            .filter((event) => event.active)
             .map((event) => ({
               id: event.slug,
               name: { ru: event.name, en: event.name },
@@ -235,9 +251,35 @@ function HomeContent() {
     }
   }, [])
 
+  useEffect(() => {
+    const now = new Date()
+    const nextMidnight = new Date(now)
+    nextMidnight.setHours(24, 0, 5, 0)
+
+    const timeoutMs = Math.max(1_000, nextMidnight.getTime() - now.getTime())
+    const timer = window.setTimeout(() => {
+      setTodayIso(getTodayIso())
+    }, timeoutMs)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [todayIso])
+
+  const allEvents = useMemo(() => [...STATIC_EVENTS, ...cardTradeEvents], [cardTradeEvents])
   const currentEvents = useMemo(
-    () => [...CURRENT_EVENTS, ...cardTradeEvents].sort((a, b) => (a.start ?? a.end).localeCompare(b.start ?? b.end)),
-    [cardTradeEvents],
+    () =>
+      allEvents
+        .filter((event) => isCurrentEvent(event, todayIso))
+        .sort((a, b) => a.end.localeCompare(b.end) || (a.start ?? a.end).localeCompare(b.start ?? b.end)),
+    [allEvents, todayIso],
+  )
+  const upcomingEvents = useMemo(
+    () =>
+      allEvents
+        .filter((event) => isUpcomingEvent(event, todayIso))
+        .sort((a, b) => (a.start ?? a.end).localeCompare(b.start ?? b.end) || a.end.localeCompare(b.end)),
+    [allEvents, todayIso],
   )
 
   return (
@@ -277,7 +319,7 @@ function HomeContent() {
           <div className="home-schedule__col">
             <h2>{isRu ? 'Предстоящие события' : 'Upcoming Events'}</h2>
             <EventList
-              events={UPCOMING_EVENTS}
+              events={upcomingEvents}
               isRu={isRu}
               mode="upcoming"
               emptyLabel={isRu ? 'Пока нет анонсов' : 'No announcements yet'}

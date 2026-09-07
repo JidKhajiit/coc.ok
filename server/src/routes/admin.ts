@@ -1,16 +1,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { eq, ne, and, inArray } from 'drizzle-orm'
-import type { Db } from '../db/index.js'
+import type { Db, DbClient } from '../db/index.js'
 import {
   users,
   roles,
   permissions,
   userRoles,
   rolePermissions,
-  userStates,
 } from '../db/schema.js'
-import type { AppState } from '../../../shared/types.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
 
@@ -39,73 +37,81 @@ const updateRoleSchema = z.object({
 const backupImportSchema = z.object({
   version: z.number().optional(),
   exportedAt: z.string().optional(),
-  data: z.object({
-    users: z
-      .array(
-        z.object({
-          id: uuidSchema,
-          username: z.string().min(1).max(64),
-          email: z.string().nullable(),
-          emailVerified: z.boolean(),
-          passwordHash: z.string().min(1),
-          createdAt: z.string().min(1),
-        }),
-      )
-      .default([]),
-    userStates: z
-      .array(
-        z.object({
-          userId: uuidSchema,
-          data: z.unknown(),
-          updatedAt: z.string().min(1),
-          shareEnabled: z.boolean(),
-          shareSlug: z.string().nullable(),
-        }),
-      )
-      .default([]),
-    roles: z
-      .array(
-        z.object({
-          id: uuidSchema,
-          name: z.string().min(1).max(64),
-          description: z.string().nullable(),
-          isSystem: z.boolean(),
-        }),
-      )
-      .default([]),
-    permissions: z
-      .array(
-        z.object({
-          id: uuidSchema,
-          name: z.string().min(1).max(128),
-          description: z.string().nullable(),
-        }),
-      )
-      .default([]),
-    userRoles: z
-      .array(
-        z.object({
-          userId: uuidSchema,
-          roleId: uuidSchema,
-        }),
-      )
-      .default([]),
-    rolePermissions: z
-      .array(
-        z.object({
-          roleId: uuidSchema,
-          permissionId: uuidSchema,
-        }),
-      )
-      .default([]),
-  }),
+  data: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))),
 })
+
+type TableRows = Record<string, Array<Record<string, unknown>>>
+
+function quoteIdentifier(name: string) {
+  return `"${name.replaceAll('"', '""')}"`
+}
+
+async function getPublicTableNames(client: DbClient) {
+  const rows = await client<{ tableName: string }[]>`
+    select tablename as "tableName"
+    from pg_tables
+    where schemaname = 'public'
+    order by tablename
+  `
+  return rows.map((row) => row.tableName)
+}
+
+async function getForeignKeyDependencies(client: DbClient) {
+  const rows = await client<{ tableName: string; dependsOn: string }[]>`
+    select distinct
+      child.relname as "tableName",
+      parent.relname as "dependsOn"
+    from pg_constraint con
+    join pg_class child on child.oid = con.conrelid
+    join pg_namespace child_ns on child_ns.oid = child.relnamespace
+    join pg_class parent on parent.oid = con.confrelid
+    join pg_namespace parent_ns on parent_ns.oid = parent.relnamespace
+    where con.contype = 'f'
+      and child_ns.nspname = 'public'
+      and parent_ns.nspname = 'public'
+      and child.relname <> parent.relname
+  `
+
+  const deps = new Map<string, Set<string>>()
+  for (const row of rows) {
+    const set = deps.get(row.tableName) ?? new Set<string>()
+    set.add(row.dependsOn)
+    deps.set(row.tableName, set)
+  }
+  return deps
+}
+
+function sortTablesForImport(tableNames: string[], dependencies: Map<string, Set<string>>) {
+  const remaining = new Set(tableNames)
+  const sorted: string[] = []
+
+  while (remaining.size > 0) {
+    const ready = [...remaining]
+      .filter((tableName) => {
+        const deps = dependencies.get(tableName)
+        if (!deps) return true
+        return [...deps].every((dep) => !remaining.has(dep))
+      })
+      .sort()
+
+    if (ready.length === 0) {
+      throw new Error(`Unable to resolve table import order: ${[...remaining].sort().join(', ')}`)
+    }
+
+    for (const tableName of ready) {
+      remaining.delete(tableName)
+      sorted.push(tableName)
+    }
+  }
+
+  return sorted
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createAdminRoutes(db: Db) {
+export function createAdminRoutes(db: Db, client: DbClient) {
   const app = new Hono<{ Variables: AppVariables }>()
 
   // All admin routes require authentication
@@ -458,33 +464,21 @@ export function createAdminRoutes(db: Db) {
 
   // GET /backup — export entire database as JSON
   app.get('/backup', requirePermission('roles:manage'), async (c) => {
-    const [
-      usersData,
-      userStatesData,
-      rolesData,
-      permissionsData,
-      userRolesData,
-      rolePermissionsData,
-    ] = await Promise.all([
-      db.select().from(users),
-      db.select().from(userStates),
-      db.select().from(roles),
-      db.select().from(permissions),
-      db.select().from(userRoles),
-      db.select().from(rolePermissions),
-    ])
+    const tableNames = await getPublicTableNames(client)
+    const dataEntries = await Promise.all(
+      tableNames.map(async (tableName) => {
+        const tableSql = quoteIdentifier(tableName)
+        const rows = await client.unsafe<{ rows: Array<Record<string, unknown>> }[]>(
+          `select coalesce(json_agg(t), '[]'::json) as rows from (select * from ${tableSql}) t`,
+        )
+        return [tableName, rows[0]?.rows ?? []] as const
+      }),
+    )
 
     const backup = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      data: {
-        users: usersData,
-        userStates: userStatesData,
-        roles: rolesData,
-        permissions: permissionsData,
-        userRoles: userRolesData,
-        rolePermissions: rolePermissionsData,
-      },
+      data: Object.fromEntries(dataEntries) as TableRows,
     }
 
     return c.json(backup)
@@ -501,64 +495,35 @@ export function createAdminRoutes(db: Db) {
     const { data } = parsed.data
 
     try {
-      await db.transaction(async (tx) => {
-        // Clear join tables and dependent data first (FK order).
-        await tx.delete(userRoles)
-        await tx.delete(rolePermissions)
-        await tx.delete(userStates)
-        await tx.delete(users)
-        await tx.delete(roles)
-        await tx.delete(permissions)
+      const existingTables = new Set(await getPublicTableNames(client))
+      const backupTableNames = Object.keys(data).filter((tableName) => existingTables.has(tableName))
+      const dependencies = await getForeignKeyDependencies(client)
+      const orderedTables = sortTablesForImport(backupTableNames, dependencies)
 
-        if (data.permissions.length > 0) {
-          await tx.insert(permissions).values(data.permissions)
+      await client.begin(async (sql) => {
+        const existingTableList = [...existingTables].sort()
+        if (existingTableList.length > 0) {
+          const truncateSql = existingTableList.map(quoteIdentifier).join(', ')
+          await sql.unsafe(`truncate table ${truncateSql} restart identity cascade`)
         }
 
-        if (data.roles.length > 0) {
-          await tx.insert(roles).values(data.roles)
-        }
+        for (const tableName of orderedTables) {
+          const rows = data[tableName] ?? []
+          if (rows.length === 0) continue
 
-        if (data.rolePermissions.length > 0) {
-          await tx.insert(rolePermissions).values(data.rolePermissions)
-        }
-
-        if (data.users.length > 0) {
-          await tx.insert(users).values(
-            data.users.map((user) => ({
-              ...user,
-              createdAt: new Date(user.createdAt),
-            })),
-          )
-        }
-
-        if (data.userRoles.length > 0) {
-          await tx.insert(userRoles).values(data.userRoles)
-        }
-
-        if (data.userStates.length > 0) {
-          await tx.insert(userStates).values(
-            data.userStates.map((state) => ({
-              userId: state.userId,
-              data: state.data as AppState,
-              updatedAt: new Date(state.updatedAt),
-              shareEnabled: state.shareEnabled,
-              shareSlug: state.shareSlug,
-            })),
+          const tableSql = quoteIdentifier(tableName)
+          await sql.unsafe(
+            `insert into ${tableSql} select * from jsonb_populate_recordset(null::${tableSql}, $1::jsonb)`,
+            [JSON.stringify(rows)],
           )
         }
       })
 
-      return c.json({
-        ok: true,
-        imported: {
-          users: data.users.length,
-          userStates: data.userStates.length,
-          roles: data.roles.length,
-          permissions: data.permissions.length,
-          userRoles: data.userRoles.length,
-          rolePermissions: data.rolePermissions.length,
-        },
-      })
+      const imported = Object.fromEntries(
+        orderedTables.map((tableName) => [tableName, data[tableName]?.length ?? 0]),
+      )
+
+      return c.json({ ok: true, imported })
     } catch (err) {
       console.error('Backup import error:', err)
       return c.json({ error: 'Import failed' }, 500)

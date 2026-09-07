@@ -9,3 +9,4 @@ export function createDb(databaseUrl: string) {
 }
 
 export type Db = ReturnType<typeof createDb>['db']
+export type DbClient = ReturnType<typeof createDb>['client']
