@@ -40,10 +40,29 @@ export function RequirePermission({ permission, redirectTo = '/card-trades' }: P
     )
   }
 
-  return <Outlet context={{ user: auth.user, logout: auth.logout }} />
+  return (
+    <Outlet
+      context={{
+        user: auth.user,
+        logout: auth.logout,
+        setUid: auth.setUid,
+        uploadAvatar: auth.uploadAvatar,
+        accounts: auth.accounts,
+        switchAccount: auth.switchAccount,
+        removeAccount: auth.removeAccount,
+        addAccount: auth.login,
+      }}
+    />
+  )
 }
 
 export type PermissionOutletContext = {
-  user: { id: string; username: string; permissions: string[] }
-  logout: () => Promise<void>
+  user: import('../api/client').AuthUser
+  logout: () => Promise<unknown>
+  setUid: (uid: string) => Promise<unknown>
+  uploadAvatar: (file: File) => Promise<unknown>
+  accounts: import('../api/client').DeviceAccount[]
+  switchAccount: (userId: string) => Promise<unknown>
+  removeAccount: (userId: string) => Promise<unknown>
+  addAccount: (login: string, password: string) => Promise<unknown>
 }

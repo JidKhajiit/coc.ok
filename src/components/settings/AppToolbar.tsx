@@ -3,13 +3,27 @@ import { Link } from 'react-router-dom'
 import { useI18n, type Locale } from '../../i18n'
 import { BRAND_NAME } from '../../brand'
 import { SiteSettingsDrawer } from './SiteSettingsDrawer'
+import { UserAvatar } from '../UserAvatar'
+import type { DeviceAccount } from '../../api/client'
 
 type Props = {
   username?: string
+  uid?: string | null
+  avatarUrl?: string | null
+  userId?: string
   permissions?: string[]
-  onLogout?: () => Promise<void>
+  accounts?: DeviceAccount[]
+  onLogout?: () => Promise<unknown>
+  onSetUid?: (uid: string) => Promise<unknown>
+  onUploadAvatar?: (file: File) => Promise<unknown>
+  onSwitchAccount?: (userId: string) => Promise<unknown>
+  onRemoveAccount?: (userId: string) => Promise<unknown>
+  onAddAccount?: (login: string, password: string) => Promise<unknown>
   locale: Locale
   onLocaleChange: (locale: Locale) => void
+  /** Page-specific settings (event drawer, etc.). Gear is always shown. */
+  onPageSettings?: () => void
+  /** @deprecated use onPageSettings */
   onEventSettings?: () => void
   /** Коллекции игроков — только в контексте card-trades, не на других эвентах */
   showCollectionNav?: boolean
@@ -18,17 +32,28 @@ type Props = {
 
 export function AppToolbar({
   username,
+  uid = null,
+  avatarUrl = null,
+  userId,
   permissions,
+  accounts,
   onLogout,
+  onSetUid,
+  onUploadAvatar,
+  onSwitchAccount,
+  onRemoveAccount,
+  onAddAccount,
   locale,
   onLocaleChange,
+  onPageSettings,
   onEventSettings,
   showCollectionNav = false,
-  collectionPath = '/card-trades/collections',
+  collectionPath = '/summer-party/collections',
 }: Props) {
   const { t } = useI18n()
   const [siteOpen, setSiteOpen] = useState(false)
   const signedIn = Boolean(username)
+  const openPageSettings = onPageSettings ?? onEventSettings
 
   return (
     <>
@@ -45,33 +70,33 @@ export function AppToolbar({
         </nav>
 
         <div className="app-toolbar__actions">
-          {onEventSettings && (
-            <button
-              type="button"
-              className="app-toolbar__btn app-toolbar__btn--event"
-              onClick={onEventSettings}
-              aria-label={t('app.eventSettings')}
-              title={t('app.eventSettings')}
-            >
-              <span className="app-toolbar__icon" aria-hidden>
-                ⚙
-              </span>
-              <span className="app-toolbar__label">{t('app.eventSettingsShort')}</span>
-            </button>
-          )}
+          <button
+            type="button"
+            className="app-toolbar__btn app-toolbar__btn--icon"
+            onClick={openPageSettings}
+            disabled={!openPageSettings}
+            aria-label={t('app.pageSettings')}
+            title={t('app.pageSettings')}
+          >
+            <span className="app-toolbar__icon" aria-hidden>
+              ⚙
+            </span>
+          </button>
 
           <button
             type="button"
             className="app-toolbar__btn app-toolbar__btn--site"
             onClick={() => setSiteOpen(true)}
-            aria-label={t('app.siteSettings')}
-            title={t('app.siteSettings')}
+            aria-label={t('app.personalization')}
+            title={t('app.personalization')}
           >
             {signedIn ? (
               <>
-                <span className="app-toolbar__avatar" aria-hidden>
-                  {username!.slice(0, 1).toUpperCase()}
-                </span>
+                <UserAvatar
+                  username={username!}
+                  avatarUrl={avatarUrl}
+                  className="app-toolbar__avatar"
+                />
                 <span className="app-toolbar__label app-toolbar__label--user">{username}</span>
               </>
             ) : (
@@ -79,7 +104,7 @@ export function AppToolbar({
                 <span className="app-toolbar__icon" aria-hidden>
                   ◐
                 </span>
-                <span className="app-toolbar__label">{t('app.siteSettingsShort')}</span>
+                <span className="app-toolbar__label">{t('app.personalization')}</span>
               </>
             )}
           </button>
@@ -90,8 +115,17 @@ export function AppToolbar({
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={username}
+        uid={uid}
+        avatarUrl={avatarUrl}
+        userId={userId}
         permissions={permissions}
+        accounts={accounts}
         onLogout={onLogout}
+        onSetUid={onSetUid}
+        onUploadAvatar={onUploadAvatar}
+        onSwitchAccount={onSwitchAccount}
+        onRemoveAccount={onRemoveAccount}
+        onAddAccount={onAddAccount}
         locale={locale}
         onLocaleChange={onLocaleChange}
       />

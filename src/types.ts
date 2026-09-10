@@ -58,6 +58,8 @@ export interface AppState {
   locale?: 'ru' | 'en'
   /** @deprecated миграция со старого формата */
   wishlist?: string[]
+  /** Оставшиеся инициации обменов в игре (ручной счётчик, лимит 3) */
+  tradeAttemptsLeft?: number
 }
 
 export type TabId = 'collection' | 'wishlist' | 'trades' | 'trends'
@@ -72,5 +74,8 @@ export const DEFAULT_ACCOUNTS: Account[] = []
 /** Id для режима без списка аккаунтов (одна звезда) */
 export const SOLO_ACCOUNT_ID = 'solo'
 
-/** Лимит обменов в день, дающих бонус */
+/** Лимит обменов в день, дающих бонусную звезду */
 export const DAILY_BONUS_TRADE_LIMIT = 20
+
+/** Лимит инициаций обменов в день в игре */
+export const DAILY_TRADE_INITIATION_LIMIT = 3

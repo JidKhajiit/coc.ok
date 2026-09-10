@@ -4,7 +4,6 @@ import { Hono } from 'hono'
 import { secureHeaders } from 'hono/secure-headers'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { createDb } from './db/index.js'
 import { loadEnv } from './env.js'
 import { createSessionMiddleware, cleanupExpiredSessions } from './middleware/session.js'
@@ -38,7 +37,10 @@ api.route('/admin', createAdminRoutes(db, client))
 api.route('/cozy-farm', createCozyFarmRoutes(db))
 app.route('/api', api)
 
-const distPath = resolve(fileURLToPath(new URL('../../../dist', import.meta.url)))
+const projectRoot = process.cwd()
+app.use('/uploads/*', serveStatic({ root: projectRoot }))
+
+const distPath = resolve(projectRoot, 'dist')
 if (existsSync(distPath)) {
   app.use('/*', serveStatic({ root: distPath }))
   app.get('*', serveStatic({ path: resolve(distPath, 'index.html') }))

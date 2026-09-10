@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { rarityLabel } from '../data/cards'
 import type { Card, PotentialTrade, TradeRecord, TradeSource } from '../types'
 import { localeTag, useI18n, type TranslateFn } from '../i18n'
+import * as api from '../api/client'
+import type { TradeProposal } from '../api/client'
 import { CardPicker } from './CardPicker'
+import { collectionPath } from '../lib/events'
+import { Link } from 'react-router-dom'
 
 interface Props {
+  eventSlug: string
   cards: Card[]
   owned: Record<string, number>
   trades: TradeRecord[]
@@ -36,6 +41,7 @@ interface Props {
   onRemovePotential: (id: string) => void
   onConfirmPotential: (id: string) => void
   onArchivePotential: (id: string) => void
+  onProposalAccepted?: () => void
 }
 
 function TradeCardRef({
@@ -109,6 +115,7 @@ function tradeSourceLabel(source: TradeSource, t: TranslateFn): string | null {
 const HISTORY_PAGE_SIZE = 5
 
 export function TradesView({
+  eventSlug,
   cards,
   owned,
   trades,
@@ -121,6 +128,7 @@ export function TradesView({
   onRemovePotential,
   onConfirmPotential,
   onArchivePotential,
+  onProposalAccepted,
 }: Props) {
   const { t, locale } = useI18n()
   const [givenId, setGivenId] = useState('')
@@ -140,6 +148,32 @@ export function TradesView({
   const [editingPotentialId, setEditingPotentialId] = useState<string | null>(null)
   const [potentialError, setPotentialError] = useState('')
   const potentialFormRef = useRef<HTMLFormElement>(null)
+
+  const [incoming, setIncoming] = useState<TradeProposal[]>([])
+  const [outgoing, setOutgoing] = useState<TradeProposal[]>([])
+  const [proposalsError, setProposalsError] = useState('')
+  const [proposalsBusyId, setProposalsBusyId] = useState<string | null>(null)
+
+  const refreshProposals = () => {
+    void api
+      .listEventProposals(eventSlug)
+      .then((data) => {
+        setIncoming(data.incoming)
+        setOutgoing(data.outgoing)
+        setProposalsError('')
+      })
+      .catch(() => {
+        setProposalsError(t('proposals.actionFail'))
+      })
+  }
+
+  useEffect(() => {
+    refreshProposals()
+    const onFocus = () => refreshProposals()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh on event + locale label only
+  }, [eventSlug])
 
   useEffect(() => {
     if (!potentialFormOpen || !editingPotentialId) return
@@ -290,11 +324,167 @@ export function TradesView({
 
   return (
     <section className="panel">
-      <header className="panel__head">
-        <div>
-          <h2>{t('trades.title')}</h2>
+      <div className="trade-section proposals-section">
+        <div className="trade-section__head">
+          <div className="trade-section__title">
+            <h3>{t('proposals.incoming')}</h3>
+          </div>
         </div>
-      </header>
+        {proposalsError && <p className="panel__error">{proposalsError}</p>}
+        {incoming.length === 0 ? (
+          <p className="empty">{t('proposals.emptyIncoming')}</p>
+        ) : (
+          <ul className="proposals-list">
+            {incoming.map((p) => (
+              <li key={p.id} className="proposals-item">
+                <div className="proposals-item__head">
+                  <strong>
+                    {t(`proposals.type.${p.type}` as 'proposals.type.trade')} ·{' '}
+                    {t('proposals.from', { name: p.counterparty.username })}
+                  </strong>
+                  <span>{t(`proposals.status.${p.status}` as 'proposals.status.pending')}</span>
+                </div>
+                <div>
+                  {p.type === 'trade' && p.offeredCardKey && cardById[p.offeredCardKey] && (
+                    <p>
+                      {t('proposals.offered')}: #{cardById[p.offeredCardKey]!.number}{' '}
+                      {cardById[p.offeredCardKey]!.unknownName
+                        ? t('common.unnamed')
+                        : cardById[p.offeredCardKey]!.name}
+                    </p>
+                  )}
+                  {cardById[p.requestedCardKey] && (
+                    <p>
+                      {t('proposals.requested')}: #{cardById[p.requestedCardKey]!.number}{' '}
+                      {cardById[p.requestedCardKey]!.unknownName
+                        ? t('common.unnamed')
+                        : cardById[p.requestedCardKey]!.name}
+                    </p>
+                  )}
+                  {p.counterparty.uid ? (
+                    <p className="proposals-item__uid">
+                      {t('proposals.opponentUid', { uid: p.counterparty.uid })}
+                    </p>
+                  ) : (
+                    <p>{t('proposals.uidHidden')}</p>
+                  )}
+                  {p.counterparty.shareSlug && (
+                    <Link to={collectionPath(eventSlug, p.counterparty.shareSlug)}>
+                      {t('share.playerCollection', { name: p.counterparty.username })}
+                    </Link>
+                  )}
+                </div>
+                {p.status === 'pending' && (
+                  <div className="proposals-item__actions">
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm"
+                      disabled={proposalsBusyId === p.id}
+                      onClick={() => {
+                        setProposalsBusyId(p.id)
+                        void api
+                          .acceptEventProposal(eventSlug, p.id)
+                          .then(() => {
+                            refreshProposals()
+                            onProposalAccepted?.()
+                          })
+                          .catch(() => setProposalsError(t('proposals.actionFail')))
+                          .finally(() => setProposalsBusyId(null))
+                      }}
+                    >
+                      {t('proposals.accept')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={proposalsBusyId === p.id}
+                      onClick={() => {
+                        setProposalsBusyId(p.id)
+                        void api
+                          .rejectEventProposal(eventSlug, p.id)
+                          .then(() => refreshProposals())
+                          .catch(() => setProposalsError(t('proposals.actionFail')))
+                          .finally(() => setProposalsBusyId(null))
+                      }}
+                    >
+                      {t('proposals.reject')}
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="trade-section proposals-section">
+        <div className="trade-section__head">
+          <div className="trade-section__title">
+            <h3>{t('proposals.outgoing')}</h3>
+          </div>
+        </div>
+        {outgoing.length === 0 ? (
+          <p className="empty">{t('proposals.emptyOutgoing')}</p>
+        ) : (
+          <ul className="proposals-list">
+            {outgoing.map((p) => (
+              <li key={p.id} className="proposals-item">
+                <div className="proposals-item__head">
+                  <strong>
+                    {t(`proposals.type.${p.type}` as 'proposals.type.trade')} ·{' '}
+                    {t('proposals.to', { name: p.counterparty.username })}
+                  </strong>
+                  <span>{t(`proposals.status.${p.status}` as 'proposals.status.pending')}</span>
+                </div>
+                <div>
+                  {p.type === 'trade' && p.offeredCardKey && cardById[p.offeredCardKey] && (
+                    <p>
+                      {t('proposals.offered')}: #{cardById[p.offeredCardKey]!.number}{' '}
+                      {cardById[p.offeredCardKey]!.unknownName
+                        ? t('common.unnamed')
+                        : cardById[p.offeredCardKey]!.name}
+                    </p>
+                  )}
+                  {cardById[p.requestedCardKey] && (
+                    <p>
+                      {t('proposals.requested')}: #{cardById[p.requestedCardKey]!.number}{' '}
+                      {cardById[p.requestedCardKey]!.unknownName
+                        ? t('common.unnamed')
+                        : cardById[p.requestedCardKey]!.name}
+                    </p>
+                  )}
+                  {p.counterparty.uid ? (
+                    <p className="proposals-item__uid">
+                      {t('proposals.opponentUid', { uid: p.counterparty.uid })}
+                    </p>
+                  ) : (
+                    <p>{t('proposals.uidHidden')}</p>
+                  )}
+                </div>
+                {p.status === 'pending' && (
+                  <div className="proposals-item__actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={proposalsBusyId === p.id}
+                      onClick={() => {
+                        setProposalsBusyId(p.id)
+                        void api
+                          .cancelEventProposal(eventSlug, p.id)
+                          .then(() => refreshProposals())
+                          .catch(() => setProposalsError(t('proposals.actionFail')))
+                          .finally(() => setProposalsBusyId(null))
+                      }}
+                    >
+                      {t('proposals.cancel')}
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="trade-section">
         <div className="trade-section__head">

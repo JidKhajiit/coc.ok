@@ -1,10 +1,16 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { hash, verify } from '@node-rs/argon2'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getCookie } from 'hono/cookie'
 import type { Db } from '../db/index.js'
-import { authTokens, userStates, users, userRoles, roles, rolePermissions, permissions } from '../db/schema.js'
+import {
+  authTokens,
+  userStates,
+  users,
+  userRoles,
+  roles,
+} from '../db/schema.js'
 import type { Env } from '../env.js'
 import { passwordResetEmail, verificationEmail } from '../lib/email.js'
 import {
@@ -15,14 +21,26 @@ import {
 } from '../lib/tokens.js'
 import {
   createSession,
-  destroySession,
   destroyUserSessions,
+  ensureDeviceAccountLink,
+  ensureDeviceId,
+  listDeviceAccounts,
+  loadUserPermissions,
+  logoutCurrentDeviceAccount,
+  publicSessionUser,
+  removeDeviceAccount,
+  switchDeviceAccount,
   SESSION_COOKIE,
   type AppVariables,
 } from '../middleware/session.js'
 import { createRateLimit } from '../middleware/rateLimit.js'
 import { requireAuth } from '../middleware/auth.js'
 import { EMPTY_STATE } from '../../../shared/types.js'
+import {
+  AVATAR_MAX_BYTES,
+  isAllowedAvatarMime,
+  saveAvatarFile,
+} from '../lib/avatars.js'
 
 const usernameSchema = z
   .string()
@@ -31,14 +49,27 @@ const usernameSchema = z
   .max(32, 'Username must be at most 32 characters')
   .regex(/^[a-zA-Z0-9_-]+$/, 'Username may only contain letters, numbers, _ and -')
 
+/** Game UID used as the public share-link identity. */
+export const uidSchema = z
+  .string()
+  .trim()
+  .min(1, 'UID is required')
+  .max(64, 'UID must be at most 64 characters')
+  .regex(/^[a-zA-Z0-9_-]+$/, 'UID may only contain letters, numbers, _ and -')
+
 const emailSchema = z.string().trim().email('Invalid email address').max(254)
 
 const passwordSchema = z.string().min(8, 'Password must be at least 8 characters').max(128)
 
 const registerSchema = z.object({
   username: usernameSchema,
+  uid: uidSchema,
   email: emailSchema,
   password: passwordSchema,
+})
+
+const setUidSchema = z.object({
+  uid: uidSchema,
 })
 
 const loginSchema = z.object({
@@ -57,6 +88,14 @@ const resetSchema = z.object({
 
 const verifySchema = z.object({
   token: z.string().min(1),
+})
+
+const switchSchema = z.object({
+  userId: z.string().uuid(),
+})
+
+const removeAccountSchema = z.object({
+  userId: z.string().uuid(),
 })
 
 async function createAuthToken(
@@ -111,7 +150,7 @@ export function createAuthRoutes(db: Db, env: Env) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
     }
 
-    const { username, password } = parsed.data
+    const { username, uid, password } = parsed.data
     const email = normalizeEmail(parsed.data.email)
 
     const existingUsername = await db
@@ -124,8 +163,13 @@ export function createAuthRoutes(db: Db, env: Env) {
       .from(users)
       .where(eq(users.email, email))
       .limit(1)
-    if (existingUsername.length > 0 || existingEmail.length > 0) {
-      // Same response for username/email conflict to avoid account enumeration.
+    const existingUid = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.uid, uid))
+      .limit(1)
+    if (existingUsername.length > 0 || existingEmail.length > 0 || existingUid.length > 0) {
+      // Same response for username/email/uid conflict to avoid account enumeration.
       return c.json({ error: 'Unable to register with these credentials' }, 409)
     }
 
@@ -137,8 +181,8 @@ export function createAuthRoutes(db: Db, env: Env) {
     const passwordHash = await hash(password)
     const [user] = await db
       .insert(users)
-      .values({ username, email, emailVerified: false, passwordHash })
-      .returning({ id: users.id, username: users.username })
+      .values({ username, uid, email, emailVerified: false, passwordHash })
+      .returning({ id: users.id, username: users.username, uid: users.uid })
 
     if (!user) {
       return c.json({ error: 'Failed to create user' }, 500)
@@ -175,6 +219,8 @@ export function createAuthRoutes(db: Db, env: Env) {
       .select({
         id: users.id,
         username: users.username,
+        uid: users.uid,
+        avatarUrl: users.avatarUrl,
         passwordHash: users.passwordHash,
         email: users.email,
         emailVerified: users.emailVerified,
@@ -196,21 +242,28 @@ export function createAuthRoutes(db: Db, env: Env) {
       return c.json({ error: 'Email not verified. Check your inbox.' }, 403)
     }
 
-    await createSession(db, env, c, user.id)
+    try {
+      await createSession(db, env, c, user.id)
+    } catch (err) {
+      if (err instanceof Error && err.message === 'DEVICE_ACCOUNT_LIMIT') {
+        return c.json({ error: 'Too many accounts on this device (max 10)' }, 400)
+      }
+      throw err
+    }
 
-    const permRows = await db
-      .selectDistinct({ name: permissions.name })
-      .from(userRoles)
-      .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
-      .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-      .where(eq(userRoles.userId, user.id))
+    const perms = await loadUserPermissions(db, user.id)
+    const deviceId = ensureDeviceId(env, c)
+    const accounts = await listDeviceAccounts(db, deviceId, user.id)
 
     return c.json({
       user: {
         id: user.id,
         username: user.username,
-        permissions: permRows.map((p) => p.name),
+        uid: user.uid,
+        avatarUrl: user.avatarUrl,
+        permissions: perms,
       },
+      accounts,
     })
   })
 
@@ -314,22 +367,184 @@ export function createAuthRoutes(db: Db, env: Env) {
   })
 
   app.post('/logout', requireAuth, async (c) => {
+    const user = c.get('user')!
     const sessionId = getCookie(c, SESSION_COOKIE)
-    await destroySession(db, env, c, sessionId)
-    return c.json({ ok: true })
+    const result = await logoutCurrentDeviceAccount(db, env, c, sessionId, user.id)
+    return c.json({
+      ok: true,
+      user: result.user ? publicSessionUser(result.user) : null,
+      accounts: result.accounts,
+    })
   })
 
   app.get('/me', async (c) => {
     const user = c.get('user')
-    if (!user) {
-      return c.json({ user: null })
+    const deviceId = ensureDeviceId(env, c)
+    const sessionId = getCookie(c, SESSION_COOKIE)
+    if (user && sessionId) {
+      await ensureDeviceAccountLink(db, deviceId, user.id, sessionId)
     }
+    const accounts = await listDeviceAccounts(db, deviceId, user?.id ?? null)
+    if (!user) {
+      return c.json({ user: null, accounts })
+    }
+    return c.json({
+      user: publicSessionUser(user),
+      accounts,
+    })
+  })
+
+  app.get('/accounts', async (c) => {
+    const user = c.get('user')
+    const deviceId = ensureDeviceId(env, c)
+    const accounts = await listDeviceAccounts(db, deviceId, user?.id ?? null)
+    return c.json({ accounts })
+  })
+
+  app.post('/switch', rateLimit, async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const parsed = switchSchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
+    }
+
+    const deviceId = ensureDeviceId(env, c)
+    const switched = await switchDeviceAccount(db, env, c, deviceId, parsed.data.userId)
+    if (!switched) {
+      return c.json({ error: 'Account not available on this device' }, 404)
+    }
+
+    const accounts = await listDeviceAccounts(db, deviceId, switched.id)
+    return c.json({
+      user: publicSessionUser(switched),
+      accounts,
+    })
+  })
+
+  app.post('/accounts/remove', requireAuth, rateLimit, async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const parsed = removeAccountSchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
+    }
+
+    const user = c.get('user')!
+    const deviceId = ensureDeviceId(env, c)
+    const result = await removeDeviceAccount(
+      db,
+      env,
+      c,
+      deviceId,
+      parsed.data.userId,
+      user.id,
+    )
+
+    if (!result.switched) {
+      return c.json({
+        user: publicSessionUser(user),
+        accounts: result.accounts,
+      })
+    }
+
+    return c.json({
+      user: result.user ? publicSessionUser(result.user) : null,
+      accounts: result.accounts,
+    })
+  })
+
+  /** Set game UID once for legacy accounts that registered before UID was required. */
+  app.put('/uid', requireAuth, async (c) => {
+    const user = c.get('user')!
+    if (user.uid) {
+      return c.json({ error: 'UID is already set' }, 409)
+    }
+
+    const body = await c.req.json().catch(() => null)
+    const parsed = setUidSchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
+    }
+
+    const uid = parsed.data.uid
+    const existing = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.uid, uid))
+      .limit(1)
+    if (existing.length > 0) {
+      return c.json({ error: 'This UID is already taken' }, 409)
+    }
+
+    const [updated] = await db
+      .update(users)
+      .set({ uid })
+      .where(and(eq(users.id, user.id), isNull(users.uid)))
+      .returning({
+        id: users.id,
+        username: users.username,
+        uid: users.uid,
+        avatarUrl: users.avatarUrl,
+      })
+
+    if (!updated?.uid) {
+      return c.json({ error: 'UID is already set' }, 409)
+    }
+
+    return c.json({
+      user: {
+        id: updated.id,
+        username: updated.username,
+        uid: updated.uid,
+        avatarUrl: updated.avatarUrl,
+        permissions: user.permissions,
+      },
+    })
+  })
+
+  app.put('/avatar', requireAuth, rateLimit, async (c) => {
+    const user = c.get('user')!
+    const body = await c.req.parseBody({ all: true })
+    const raw = body['avatar']
+    const file = Array.isArray(raw) ? raw[0] : raw
+
+    if (!(file instanceof File)) {
+      return c.json({ error: 'Avatar file is required' }, 400)
+    }
+
+    const mime = file.type
+    if (!isAllowedAvatarMime(mime)) {
+      return c.json({ error: 'Only JPEG, PNG, WebP and GIF are allowed' }, 400)
+    }
+
+    if (file.size <= 0 || file.size > AVATAR_MAX_BYTES) {
+      return c.json({ error: 'Avatar must be under 2 MB' }, 400)
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    let avatarUrl: string
+    try {
+      avatarUrl = await saveAvatarFile(user.id, mime, buffer, user.avatarUrl)
+    } catch (err) {
+      if (err instanceof Error && (err.message === 'INVALID_TYPE' || err.message === 'INVALID_SIZE')) {
+        return c.json({ error: 'Invalid avatar file' }, 400)
+      }
+      throw err
+    }
+
+    await db.update(users).set({ avatarUrl }).where(eq(users.id, user.id))
+
+    const deviceId = ensureDeviceId(env, c)
+    const accounts = await listDeviceAccounts(db, deviceId, user.id)
+
     return c.json({
       user: {
         id: user.id,
         username: user.username,
+        uid: user.uid,
+        avatarUrl,
         permissions: user.permissions,
       },
+      accounts,
     })
   })
 

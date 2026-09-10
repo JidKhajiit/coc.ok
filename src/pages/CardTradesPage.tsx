@@ -7,23 +7,26 @@ import { CollectionView } from '../components/CollectionView'
 import { WishlistView } from '../components/WishlistView'
 import { TradesView } from '../components/TradesView'
 import { TrendsView } from '../components/TrendsView'
+import { CardDetailModal } from '../components/CardDetailModal'
 import { AppToolbar } from '../components/settings/AppToolbar'
 import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSettingsDrawer'
+import { SiteFooter } from '../components/SiteFooter'
 import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
-import { DAILY_BONUS_TRADE_LIMIT, type Card, type TabId } from '../types'
+import { DAILY_BONUS_TRADE_LIMIT, DAILY_TRADE_INITIATION_LIMIT, type Card, type TabId } from '../types'
 import type { CardTradeEvent, CardTradeEventTrends } from '../api/client'
 import * as api from '../api/client'
+import { collectionsListPath, eventPath, eventTabPath } from '../lib/events'
 import '../App.css'
 
 const SAVE_TOAST_MS = 3000
 
 function tabRoutes(eventSlug: string): { id: TabId; path: string }[] {
   return [
-    { id: 'collection', path: `/card-trades/${eventSlug}` },
-    { id: 'wishlist', path: `/card-trades/${eventSlug}/wishlist` },
-    { id: 'trades', path: `/card-trades/${eventSlug}/trades` },
-    { id: 'trends', path: `/card-trades/${eventSlug}/trends` },
+    { id: 'collection', path: eventPath(eventSlug) },
+    { id: 'wishlist', path: eventTabPath(eventSlug, 'wishlist') },
+    { id: 'trades', path: eventTabPath(eventSlug, 'trades') },
+    { id: 'trends', path: eventTabPath(eventSlug, 'trends') },
   ]
 }
 
@@ -34,7 +37,8 @@ function CardTradesShell({
   app: ReturnType<typeof useAppState>
   event: CardTradeEvent
 }) {
-  const { user, logout } = useOutletContext<AuthOutletContext>()
+  const { user, logout, setUid, uploadAvatar, accounts, switchAccount, removeAccount, addAccount } =
+    useOutletContext<AuthOutletContext>()
   const [eventSettingsOpen, setEventSettingsOpen] = useState(false)
   const [saveToast, setSaveToast] = useState<string | null>(null)
   const wasSavingRef = useRef(false)
@@ -72,13 +76,17 @@ function CardTradesShell({
 
   const tradesToday = app.stats.tradesToday
   const totalCards = event.cards.length
-  const collectionPercent = totalCards > 0 ? Math.round((app.stats.uniqueOwned / totalCards) * 100) : 0
+  const collectionPercentValue =
+    totalCards > 0 ? Math.round((app.stats.uniqueOwned / totalCards) * 100) : 0
   const tradesGoalClass =
     tradesToday >= DAILY_BONUS_TRADE_LIMIT
       ? tradesToday > DAILY_BONUS_TRADE_LIMIT
         ? 'stat--over'
         : 'stat--ok'
       : ''
+  const attemptsLeft = app.state.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT
+  const attemptsClass =
+    attemptsLeft <= 0 ? 'stat--over' : attemptsLeft <= 1 ? 'stat--muted' : 'stat--ok'
 
   return (
     <div className="app">
@@ -86,13 +94,22 @@ function CardTradesShell({
 
       <AppToolbar
         username={user.username}
+        uid={user.uid}
+        avatarUrl={user.avatarUrl}
+        userId={user.id}
         permissions={user.permissions}
+        accounts={accounts}
         onLogout={logout}
+        onSetUid={setUid}
+        onUploadAvatar={uploadAvatar}
+        onSwitchAccount={switchAccount}
+        onRemoveAccount={removeAccount}
+        onAddAccount={addAccount}
         locale={locale}
         onLocaleChange={handleLocaleChange}
-        onEventSettings={() => setEventSettingsOpen(true)}
+        onPageSettings={() => setEventSettingsOpen(true)}
         showCollectionNav
-        collectionPath={`/card-trades/${event.slug}/collections`}
+        collectionPath={collectionsListPath(event.slug)}
       />
 
       {saveToast && (
@@ -103,7 +120,7 @@ function CardTradesShell({
 
       <CardTradesSettingsDrawer
         open={eventSettingsOpen}
-        username={user.username}
+        uid={user.uid}
         onClose={() => setEventSettingsOpen(false)}
         accounts={app.state.accounts}
         onAdd={() => app.addAccount()}
@@ -114,6 +131,7 @@ function CardTradesShell({
         onImport={app.importBackup}
         onImportText={app.importBackupText}
         eventSlug={event.slug}
+        eventName={event.name}
       />
 
       {app.loading ? (
@@ -128,12 +146,12 @@ function CardTradesShell({
               <div
                 className="stat"
                 aria-label={t('app.stat.collectionAria', {
-                  percent: collectionPercent,
+                  percent: collectionPercentValue,
                   owned: app.stats.uniqueOwned,
                   total: totalCards,
                 })}
               >
-                <strong>{collectionPercent}%</strong>
+                <strong>{collectionPercentValue}%</strong>
                 <span>
                   {t('app.stat.collectionDetail', {
                     owned: app.stats.uniqueOwned,
@@ -170,6 +188,47 @@ function CardTradesShell({
                 </strong>
                 <span>{t('app.stat.tradesToday')}</span>
               </div>
+              <div className={`stat ${attemptsClass}`}>
+                <span className="stat__help help-tip help-tip--hero">
+                  <button
+                    type="button"
+                    className="help-tip__btn"
+                    aria-label={t('app.stat.attemptsHelpAria')}
+                  >
+                    ?
+                  </button>
+                  <span className="help-tip__popup" role="tooltip">
+                    {t('app.stat.attemptsHelp', { limit: DAILY_TRADE_INITIATION_LIMIT })}
+                  </span>
+                </span>
+                <div className="stat__stepper">
+                  <button
+                    type="button"
+                    className="stat__step"
+                    aria-label={t('app.stat.attemptsDown')}
+                    disabled={attemptsLeft <= 0}
+                    onClick={() => app.adjustTradeAttemptsLeft(-1)}
+                  >
+                    −
+                  </button>
+                  <strong>
+                    {t('app.stat.attemptsValue', {
+                      n: attemptsLeft,
+                      limit: DAILY_TRADE_INITIATION_LIMIT,
+                    })}
+                  </strong>
+                  <button
+                    type="button"
+                    className="stat__step"
+                    aria-label={t('app.stat.attemptsUp')}
+                    disabled={attemptsLeft >= DAILY_TRADE_INITIATION_LIMIT}
+                    onClick={() => app.adjustTradeAttemptsLeft(1)}
+                  >
+                    +
+                  </button>
+                </div>
+                <span>{t('app.stat.attemptsLeft')}</span>
+              </div>
             </div>
 
           </header>
@@ -191,7 +250,7 @@ function CardTradesShell({
             <Outlet context={{ app, user, event }} />
           </main>
 
-          <footer className="footer">{t('app.footer', { cards: totalCards })}</footer>
+          <SiteFooter />
         </>
       )}
     </div>
@@ -200,46 +259,77 @@ function CardTradesShell({
 
 export type CardTradesOutletContext = {
   app: ReturnType<typeof useAppState>
-  user: { id: string; username: string; permissions: string[] }
+  user: { id: string; username: string; uid: string | null; permissions: string[] }
   event: { slug: string; name: string; cards: Card[]; sets: CardSet[] }
 }
 
 export function CardTradesCollectionTab() {
-  const { app, user, event } = useOutletContext<CardTradesOutletContext>()
+  const { app, event } = useOutletContext<CardTradesOutletContext>()
+  const [detailCard, setDetailCard] = useState<Card | null>(null)
 
   return (
-    <CollectionView
-      username={user.username}
-      cards={event.cards}
-      sets={event.sets}
-      owned={app.state.owned}
-      accounts={app.state.accounts}
-      neededBy={app.state.neededBy}
-      reservedByCard={app.reservedByCard}
-      reservedPartners={app.reservedPartners}
-      tradeNeedCardIds={app.tradeNeedCardIds}
-      onAdjust={app.adjustOwned}
-      onToggleNeeded={app.toggleNeeded}
-      onSetNeededForAll={app.setNeededForAll}
-      onToggleStar={app.toggleStar}
-    />
+    <>
+      <CollectionView
+        cards={event.cards}
+        sets={event.sets}
+        owned={app.state.owned}
+        accounts={app.state.accounts}
+        neededBy={app.state.neededBy}
+        reservedByCard={app.reservedByCard}
+        reservedPartners={app.reservedPartners}
+        tradeNeedCardIds={app.tradeNeedCardIds}
+        onAdjust={app.adjustOwned}
+        onToggleNeeded={app.toggleNeeded}
+        onSetNeededForAll={app.setNeededForAll}
+        onToggleStar={app.toggleStar}
+        onCardClick={setDetailCard}
+      />
+      {detailCard && (
+        <CardDetailModal
+          open
+          onClose={() => setDetailCard(null)}
+          card={detailCard}
+          eventSlug={event.slug}
+          mode="own-collection"
+          qty={app.state.owned[detailCard.id] ?? 0}
+          neededAccountIds={app.state.neededBy[detailCard.id] ?? []}
+          signedIn
+        />
+      )}
+    </>
   )
 }
 
 export function CardTradesWishlistTab() {
   const { app, event } = useOutletContext<CardTradesOutletContext>()
+  const [detailCard, setDetailCard] = useState<Card | null>(null)
 
   return (
-    <WishlistView
-      accounts={app.state.accounts}
-      cards={event.cards}
-      neededBy={app.state.neededBy}
-      owned={app.state.owned}
-      tradeNeedCardIds={app.tradeNeedCardIds}
-      onToggleNeeded={app.toggleNeeded}
-      onSetNeededForAll={app.setNeededForAll}
-      onToggleStar={app.toggleStar}
-    />
+    <>
+      <WishlistView
+        accounts={app.state.accounts}
+        cards={event.cards}
+        neededBy={app.state.neededBy}
+        owned={app.state.owned}
+        tradeNeedCardIds={app.tradeNeedCardIds}
+        onToggleNeeded={app.toggleNeeded}
+        onSetNeededForAll={app.setNeededForAll}
+        onToggleStar={app.toggleStar}
+        onCardClick={setDetailCard}
+      />
+      {detailCard && (
+        <CardDetailModal
+          open
+          onClose={() => setDetailCard(null)}
+          card={detailCard}
+          eventSlug={event.slug}
+          mode="own-wishlist"
+          qty={app.state.owned[detailCard.id] ?? 0}
+          neededAccountIds={app.state.neededBy[detailCard.id] ?? []}
+          signedIn
+        />
+      )}
+    </>
   )
 }
 
@@ -248,6 +338,7 @@ export function CardTradesTradesTab() {
 
   return (
     <TradesView
+      eventSlug={event.slug}
       cards={event.cards}
       owned={app.state.owned}
       trades={app.state.trades}
@@ -260,6 +351,9 @@ export function CardTradesTradesTab() {
       onRemovePotential={app.removePotentialTrade}
       onConfirmPotential={app.confirmPotentialTrade}
       onArchivePotential={app.archivePotentialTrade}
+      onProposalAccepted={() => {
+        void app.reloadFromServer()
+      }}
     />
   )
 }

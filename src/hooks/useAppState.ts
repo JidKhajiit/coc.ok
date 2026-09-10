@@ -10,7 +10,7 @@ import type {
   TradeSource,
   TrendItem,
 } from '../types'
-import { SOLO_ACCOUNT_ID } from '../types'
+import { DAILY_TRADE_INITIATION_LIMIT, SOLO_ACCOUNT_ID } from '../types'
 import { normalizeLocale, type Locale } from '../i18n'
 import { isSameGameDay } from '../utils/gameDay'
 import * as api from '../api/client'
@@ -95,6 +95,17 @@ export function useAppState(eventSlug: string, cards: Card[]) {
     }
   }, [eventSlug])
 
+  const reloadFromServer = useCallback(async () => {
+    try {
+      const data = await api.getEventState(eventSlug)
+      setState(data)
+      skipSaveRef.current = true
+      setLastSaved(true)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to load data')
+    }
+  }, [eventSlug])
+
   useEffect(() => {
     if (loading) return
     if (skipSaveRef.current) {
@@ -174,6 +185,29 @@ export function useAppState(eventSlug: string, cards: Card[]) {
 
   const setLocale = useCallback((locale: Locale) => {
     setState((prev) => ({ ...prev, locale: normalizeLocale(locale) }))
+  }, [])
+
+  const adjustTradeAttemptsLeft = useCallback((delta: number) => {
+    setState((prev) => {
+      const current = prev.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT
+      return {
+        ...prev,
+        tradeAttemptsLeft: Math.max(
+          0,
+          Math.min(DAILY_TRADE_INITIATION_LIMIT, current + delta),
+        ),
+      }
+    })
+  }, [])
+
+  const setTradeAttemptsLeft = useCallback((value: number) => {
+    setState((prev) => ({
+      ...prev,
+      tradeAttemptsLeft: Math.max(
+        0,
+        Math.min(DAILY_TRADE_INITIATION_LIMIT, Math.floor(value)),
+      ),
+    }))
   }, [])
 
   const toggleNeeded = useCallback((cardId: string, accountId: string) => {
@@ -611,9 +645,12 @@ export function useAppState(eventSlug: string, cards: Card[]) {
     saving,
     saveError,
     lastSaved,
+    reloadFromServer,
     setOwned,
     adjustOwned,
     setLocale,
+    adjustTradeAttemptsLeft,
+    setTradeAttemptsLeft,
     toggleNeeded,
     setNeededForAll,
     toggleStar,

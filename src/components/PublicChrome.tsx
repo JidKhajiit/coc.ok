@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useI18n, type Locale } from '../i18n'
 import { BRAND_NAME } from '../brand'
 import { SiteSettingsDrawer } from './settings/SiteSettingsDrawer'
+import { UserAvatar } from './UserAvatar'
 
 type Props = {
   locale: Locale
@@ -11,13 +12,15 @@ type Props = {
   /** Ссылки на коллекции уместны только в контексте трекера, не на главной сайта */
   showCollectionNav?: boolean
   collectionPath?: string
+  onPageSettings?: () => void
 }
 
 export function PublicChrome({
   locale,
   onLocaleChange,
   showCollectionNav = true,
-  collectionPath = '/card-trades/collections',
+  collectionPath = '/summer-party/collections',
+  onPageSettings,
 }: Props) {
   const { t } = useI18n()
   const location = useLocation()
@@ -45,9 +48,11 @@ export function PublicChrome({
           {showAppCta &&
             (auth.user ? (
               <Link to="/card-trades" className="public-chrome__app-link">
-                <span className="public-chrome__avatar" aria-hidden>
-                  {auth.user.username.slice(0, 1).toUpperCase()}
-                </span>
+                <UserAvatar
+                  username={auth.user.username}
+                  avatarUrl={auth.user.avatarUrl}
+                  className="public-chrome__avatar"
+                />
                 <span className="public-chrome__app-label">{t('share.backToApp')}</span>
               </Link>
             ) : (
@@ -58,13 +63,37 @@ export function PublicChrome({
 
           <button
             type="button"
-            className="public-chrome__site-btn"
-            onClick={() => setSiteOpen(true)}
-            aria-label={t('app.siteSettings')}
-            title={t('app.siteSettings')}
+            className="public-chrome__btn public-chrome__btn--icon"
+            onClick={onPageSettings}
+            disabled={!onPageSettings}
+            aria-label={t('app.pageSettings')}
+            title={t('app.pageSettings')}
           >
-            <span aria-hidden>◐</span>
-            <span className="public-chrome__site-label">{t('app.siteSettingsShort')}</span>
+            <span aria-hidden>⚙</span>
+          </button>
+
+          <button
+            type="button"
+            className="public-chrome__btn public-chrome__btn--personal"
+            onClick={() => setSiteOpen(true)}
+            aria-label={t('app.personalization')}
+            title={t('app.personalization')}
+          >
+            {auth.user ? (
+              <>
+                <UserAvatar
+                  username={auth.user.username}
+                  avatarUrl={auth.user.avatarUrl}
+                  className="public-chrome__avatar"
+                />
+                <span className="public-chrome__btn-label">{auth.user.username}</span>
+              </>
+            ) : (
+              <>
+                <span aria-hidden>◐</span>
+                <span className="public-chrome__btn-label">{t('app.personalization')}</span>
+              </>
+            )}
           </button>
         </div>
       </header>
@@ -73,8 +102,17 @@ export function PublicChrome({
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={auth.user?.username}
+        uid={auth.user?.uid}
+        avatarUrl={auth.user?.avatarUrl}
+        userId={auth.user?.id}
         permissions={auth.user?.permissions}
+        accounts={auth.accounts}
         onLogout={auth.user ? auth.logout : undefined}
+        onSetUid={auth.user ? auth.setUid : undefined}
+        onUploadAvatar={auth.user ? auth.uploadAvatar : undefined}
+        onSwitchAccount={auth.user ? auth.switchAccount : undefined}
+        onRemoveAccount={auth.user ? auth.removeAccount : undefined}
+        onAddAccount={auth.user ? auth.login : undefined}
         locale={locale}
         onLocaleChange={onLocaleChange}
       />

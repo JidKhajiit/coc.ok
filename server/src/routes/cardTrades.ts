@@ -1,16 +1,19 @@
 import { Hono } from 'hono'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/index.js'
 import {
+  cardTradeProposals,
   cardTradeUserStates,
   userStates,
   users,
 } from '../db/schema.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
-import { EMPTY_STATE, type AppState } from '../../../shared/types.js'
+import { computeCollectionStats } from '../../../shared/collectionStats.js'
+import { countCompletedTradesToday } from '../../../shared/gameDay.js'
 import { migrateState } from '../../../shared/migrateState.js'
+import { DAILY_TRADE_INITIATION_LIMIT, EMPTY_STATE, type AppState, type TradeRecord } from '../../../shared/types.js'
 import { cardId, type CardTradeCard, type CardTradeEventSeed, type CardTradeSet } from '../../../shared/cardTradeCatalog.js'
 import {
   createCardTradeEvent,
@@ -19,6 +22,7 @@ import {
   type CardTradeEventDetail,
   updateCardTradeEvent,
 } from '../lib/cardTradeEvents.js'
+import { generateShareSlug, looksLikeOpaqueShareSlug } from '../lib/shareSlug.js'
 
 const MAX_BODY_BYTES = 1_048_576
 
@@ -29,12 +33,6 @@ const eventSlugSchema = z
   .min(3)
   .max(64)
   .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters, numbers and -')
-const shareSlugSchema = z
-  .string()
-  .trim()
-  .min(3)
-  .max(32)
-  .regex(/^[a-zA-Z0-9_-]+$/, 'Slug may only contain letters, numbers, _ and -')
 
 const accountSchema = z.object({
   id: z.string().min(1).max(64),
@@ -67,6 +65,7 @@ const appStateSchema = z.object({
   trades: z.array(tradeSchema).max(10_000),
   potentialTrades: z.array(potentialTradeSchema).max(1000),
   locale: z.enum(['ru', 'en']).optional(),
+  tradeAttemptsLeft: z.number().int().min(0).max(3).optional(),
 })
 
 const cardTradeSetSchema = z.object({
@@ -93,9 +92,12 @@ const createCardTradeEventSchema = z.object({
   cards: z.array(cardTradeCardInputSchema).min(1).max(5000),
 })
 
+export type PopularityTier = 'S' | 'A' | 'B' | 'C' | 'D'
+
 type PublicCollectionPayload = {
   slug: string
   username: string
+  acceptTradeOffers: boolean
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   accounts: AppState['accounts']
@@ -103,6 +105,9 @@ type PublicCollectionPayload = {
   stats: {
     uniqueOwned: number
     neededCount: number
+    tradeable: number
+    tradesToday: number
+    tradeAttemptsLeft: number
   }
   event: {
     slug: string
@@ -111,26 +116,36 @@ type PublicCollectionPayload = {
   }
 }
 
+type ShareFields = {
+  enabled: boolean
+  slug: string | null
+  acceptTradeOffers: boolean
+}
+
 function toPublicPayload(
   shareSlug: string,
   username: string,
+  acceptTradeOffers: boolean,
   data: AppState,
   updatedAt: Date,
   event: CardTradeEventDetail,
 ): PublicCollectionPayload {
   const migrated = migrateState(data)
-  const ownedIds = Object.keys(migrated.owned).filter((id) => (migrated.owned[id] ?? 0) > 0)
+  const stats = computeCollectionStats(migrated.owned, migrated.neededBy)
   return {
     slug: shareSlug,
     username,
+    acceptTradeOffers,
     owned: migrated.owned,
     neededBy: migrated.neededBy,
     accounts: migrated.accounts,
     updatedAt: updatedAt.toISOString(),
     stats: {
-      uniqueOwned: ownedIds.length,
-      neededCount: Object.keys(migrated.neededBy).filter((id) => (migrated.neededBy[id] ?? []).length > 0)
-        .length,
+      uniqueOwned: stats.uniqueOwned,
+      neededCount: stats.neededCount,
+      tradeable: stats.tradeable,
+      tradesToday: countCompletedTradesToday(migrated.trades),
+      tradeAttemptsLeft: migrated.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT,
     },
     event: {
       slug: event.slug,
@@ -207,12 +222,21 @@ function isSummerParty(eventSlug: string) {
   return eventSlug === 'summer-party'
 }
 
-async function loadLegacyState(db: Db, userId: string) {
+type StateRow = {
+  data: AppState
+  shareEnabled: boolean
+  shareSlug: string | null
+  acceptTradeOffers: boolean
+  updatedAt: Date
+}
+
+async function loadLegacyState(db: Db, userId: string): Promise<StateRow | null> {
   const rows = await db
     .select({
       data: userStates.data,
       shareEnabled: userStates.shareEnabled,
       shareSlug: userStates.shareSlug,
+      acceptTradeOffers: userStates.acceptTradeOffers,
       updatedAt: userStates.updatedAt,
     })
     .from(userStates)
@@ -221,12 +245,13 @@ async function loadLegacyState(db: Db, userId: string) {
   return rows[0] ?? null
 }
 
-async function loadEventState(db: Db, event: CardTradeEventDetail, userId: string) {
+async function loadEventState(db: Db, event: CardTradeEventDetail, userId: string): Promise<StateRow | null> {
   const rows = await db
     .select({
       data: cardTradeUserStates.data,
       shareEnabled: cardTradeUserStates.shareEnabled,
       shareSlug: cardTradeUserStates.shareSlug,
+      acceptTradeOffers: cardTradeUserStates.acceptTradeOffers,
       updatedAt: cardTradeUserStates.updatedAt,
     })
     .from(cardTradeUserStates)
@@ -243,7 +268,7 @@ async function upsertEventState(
   event: CardTradeEventDetail,
   userId: string,
   state: AppState,
-  share?: { enabled: boolean; slug: string | null },
+  share?: ShareFields,
 ) {
   const now = new Date()
   await db
@@ -253,14 +278,26 @@ async function upsertEventState(
       eventId: event.id,
       data: state,
       updatedAt: now,
-      ...(share ? { shareEnabled: share.enabled, shareSlug: share.slug } : {}),
+      ...(share
+        ? {
+            shareEnabled: share.enabled,
+            shareSlug: share.slug,
+            acceptTradeOffers: share.acceptTradeOffers,
+          }
+        : {}),
     })
     .onConflictDoUpdate({
       target: [cardTradeUserStates.userId, cardTradeUserStates.eventId],
       set: {
         data: state,
         updatedAt: now,
-        ...(share ? { shareEnabled: share.enabled, shareSlug: share.slug } : {}),
+        ...(share
+          ? {
+              shareEnabled: share.enabled,
+              shareSlug: share.slug,
+              acceptTradeOffers: share.acceptTradeOffers,
+            }
+          : {}),
       },
     })
 
@@ -273,13 +310,20 @@ async function upsertEventState(
         updatedAt: now,
         shareEnabled: share?.enabled ?? false,
         shareSlug: share?.slug ?? null,
+        acceptTradeOffers: share?.acceptTradeOffers ?? true,
       })
       .onConflictDoUpdate({
         target: userStates.userId,
         set: {
           data: state,
           updatedAt: now,
-          ...(share ? { shareEnabled: share.enabled, shareSlug: share.slug } : {}),
+          ...(share
+            ? {
+                shareEnabled: share.enabled,
+                shareSlug: share.slug,
+                acceptTradeOffers: share.acceptTradeOffers,
+              }
+            : {}),
         },
       })
   }
@@ -289,12 +333,11 @@ async function updateShareOnly(
   db: Db,
   event: CardTradeEventDetail,
   userId: string,
-  enabled: boolean,
-  slug: string,
+  share: ShareFields,
 ) {
   const current = await loadEventState(db, event, userId)
   const data = migrateState((current?.data ?? EMPTY_STATE) as AppState)
-  await upsertEventState(db, event, userId, data, { enabled, slug })
+  await upsertEventState(db, event, userId, data, share)
 }
 
 async function shareSlugTaken(db: Db, event: CardTradeEventDetail, slug: string, userId: string) {
@@ -320,10 +363,28 @@ async function shareSlugTaken(db: Db, event: CardTradeEventDetail, slug: string,
   return Boolean(legacy[0] && legacy[0].userId !== userId)
 }
 
+async function allocateShareSlug(
+  db: Db,
+  event: CardTradeEventDetail,
+  userId: string,
+  gameUid: string | null,
+  currentSlug: string | null,
+): Promise<string> {
+  if (currentSlug && looksLikeOpaqueShareSlug(currentSlug, gameUid)) {
+    return currentSlug
+  }
+  for (let i = 0; i < 8; i += 1) {
+    const slug = generateShareSlug()
+    if (!(await shareSlugTaken(db, event, slug, userId))) return slug
+  }
+  throw new Error('Could not allocate share slug')
+}
+
 type SharedRow = {
   userId: string
   username: string
   shareSlug: string
+  acceptTradeOffers: boolean
   updatedAt: Date
   data: AppState
 }
@@ -340,6 +401,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
       userId: cardTradeUserStates.userId,
       username: users.username,
       shareSlug: cardTradeUserStates.shareSlug,
+      acceptTradeOffers: cardTradeUserStates.acceptTradeOffers,
       updatedAt: cardTradeUserStates.updatedAt,
       data: cardTradeUserStates.data,
     })
@@ -349,11 +411,12 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
     .orderBy(desc(cardTradeUserStates.updatedAt))
 
   const next = rows
-    .filter((row): row is SharedRow => Boolean(row.shareSlug))
+    .filter((row): row is typeof row & { shareSlug: string } => Boolean(row.shareSlug))
     .map((row) => ({
       userId: row.userId,
       username: row.username,
-      shareSlug: row.shareSlug!,
+      shareSlug: row.shareSlug,
+      acceptTradeOffers: row.acceptTradeOffers,
       updatedAt: row.updatedAt,
       data: row.data,
     }))
@@ -366,6 +429,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
       userId: userStates.userId,
       username: users.username,
       shareSlug: userStates.shareSlug,
+      acceptTradeOffers: userStates.acceptTradeOffers,
       updatedAt: userStates.updatedAt,
       data: userStates.data,
     })
@@ -380,6 +444,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
       userId: row.userId,
       username: row.username,
       shareSlug: row.shareSlug,
+      acceptTradeOffers: row.acceptTradeOffers,
       updatedAt: row.updatedAt,
       data: row.data,
     })
@@ -453,6 +518,99 @@ function buildTrendSummary(states: Array<{ data: AppState }>): TrendSummary {
   }
 }
 
+function tierFromRank(rank: number, total: number): PopularityTier {
+  if (total <= 0 || rank <= 0) return 'D'
+  const pct = rank / total
+  if (pct <= 0.05) return 'S'
+  if (pct <= 0.15) return 'A'
+  if (pct <= 0.35) return 'B'
+  if (pct <= 0.6) return 'C'
+  return 'D'
+}
+
+function buildCardStats(
+  event: CardTradeEventDetail,
+  states: Array<{ data: AppState }>,
+  cardKey: string,
+) {
+  const given: Record<string, number> = {}
+  const requested: Record<string, number> = {}
+
+  for (const row of states) {
+    for (const trade of row.data.trades) {
+      given[trade.givenCardId] = (given[trade.givenCardId] ?? 0) + 1
+      if (trade.receivedCardId) {
+        requested[trade.receivedCardId] = (requested[trade.receivedCardId] ?? 0) + 1
+      }
+    }
+  }
+
+  const scores = new Map<string, number>()
+  for (const card of event.cards) {
+    scores.set(card.id, (given[card.id] ?? 0) + (requested[card.id] ?? 0))
+  }
+
+  const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const total = ranked.length
+  const rankIndex = ranked.findIndex(([id]) => id === cardKey)
+  const rank = rankIndex >= 0 ? rankIndex + 1 : total
+  const score = scores.get(cardKey) ?? 0
+  const givenCount = given[cardKey] ?? 0
+  const requestedCount = requested[cardKey] ?? 0
+
+  return {
+    cardId: cardKey,
+    givenCount,
+    requestedCount,
+    score,
+    rank: score > 0 ? rank : null,
+    totalCards: total,
+    tier: score > 0 ? tierFromRank(rank, total) : ('D' as PopularityTier),
+  }
+}
+
+function newTradeId() {
+  return randomId()
+}
+
+class AcceptConflict extends Error {
+  status: 403 | 404 | 409
+  constructor(message: string, status: 403 | 404 | 409) {
+    super(message)
+    this.status = status
+  }
+}
+
+function randomId() {
+  return generateShareSlug() + generateShareSlug()
+}
+
+function adjustOwned(owned: Record<string, number>, cardId: string, delta: number) {
+  const next = { ...owned }
+  const value = Math.max(0, (next[cardId] ?? 0) + delta)
+  if (value === 0) delete next[cardId]
+  else next[cardId] = value
+  return next
+}
+
+function appendCompletedTrade(
+  state: AppState,
+  input: { givenCardId: string; receivedCardId?: string; partner?: string },
+): AppState {
+  const trade: TradeRecord = {
+    id: newTradeId(),
+    givenCardId: input.givenCardId,
+    ...(input.receivedCardId ? { receivedCardId: input.receivedCardId } : {}),
+    ...(input.partner ? { partner: input.partner } : {}),
+    createdAt: new Date().toISOString(),
+    source: 'completed',
+  }
+  return {
+    ...state,
+    trades: [trade, ...state.trades],
+  }
+}
+
 export function createCardTradesRoutes(db: Db) {
   const app = new Hono<{ Variables: AppVariables }>()
 
@@ -471,17 +629,42 @@ export function createCardTradesRoutes(db: Db) {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
 
-    const rows = await listSharedRows(db, event)
+    const cardIdParam = c.req.query('cardId')?.trim() || null
+    const role = c.req.query('role')
+    if (cardIdParam && role !== 'needed' && role !== 'owned') {
+      return c.json({ error: 'role must be needed or owned when cardId is set' }, 400)
+    }
+    if (cardIdParam && !event.cards.some((card) => card.id === cardIdParam)) {
+      return c.json({ error: 'Unknown card' }, 400)
+    }
+
+    let rows = await listSharedRows(db, event)
+    if (cardIdParam && role === 'needed') {
+      rows = rows.filter((row) => {
+        const state = migrateState(row.data)
+        return (state.neededBy[cardIdParam] ?? []).length > 0
+      })
+    } else if (cardIdParam && role === 'owned') {
+      rows = rows.filter((row) => {
+        const state = migrateState(row.data)
+        return (state.owned[cardIdParam] ?? 0) > 0
+      })
+    }
+
     const collections = rows.map((row) => {
       const state = migrateState(row.data)
+      const stats = computeCollectionStats(state.owned, state.neededBy)
       return {
         slug: row.shareSlug,
         username: row.username,
+        acceptTradeOffers: row.acceptTradeOffers,
         updatedAt: row.updatedAt.toISOString(),
         stats: {
-          uniqueOwned: Object.keys(state.owned).filter((id) => (state.owned[id] ?? 0) > 0).length,
-          neededCount: Object.keys(state.neededBy).filter((id) => (state.neededBy[id] ?? []).length > 0)
-            .length,
+          uniqueOwned: stats.uniqueOwned,
+          neededCount: stats.neededCount,
+          tradeable: stats.tradeable,
+          tradesToday: countCompletedTradesToday(state.trades),
+          tradeAttemptsLeft: state.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT,
         },
         event: {
           slug: event.slug,
@@ -491,7 +674,13 @@ export function createCardTradesRoutes(db: Db) {
       }
     })
 
-    return c.json({ collections })
+    return c.json({
+      collections,
+      filter:
+        cardIdParam && (role === 'needed' || role === 'owned')
+          ? { cardId: cardIdParam, role }
+          : null,
+    })
   })
 
   app.get('/:eventSlug/collections/:slug', async (c) => {
@@ -504,7 +693,14 @@ export function createCardTradesRoutes(db: Db) {
     if (!row) return c.json({ error: 'Collection not found' }, 404)
 
     return c.json({
-      collection: toPublicPayload(row.shareSlug, row.username, row.data, row.updatedAt, event),
+      collection: toPublicPayload(
+        row.shareSlug,
+        row.username,
+        row.acceptTradeOffers,
+        row.data,
+        row.updatedAt,
+        event,
+      ),
       event,
     })
   })
@@ -516,6 +712,19 @@ export function createCardTradesRoutes(db: Db) {
 
     const states = await listTrendStates(db, event)
     return c.json({ trends: buildTrendSummary(states) })
+  })
+
+  app.get('/:eventSlug/cards/:cardId/stats', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const cardKey = c.req.param('cardId')
+    if (!event.cards.some((card) => card.id === cardKey)) {
+      return c.json({ error: 'Unknown card' }, 404)
+    }
+
+    const states = await listTrendStates(db, event)
+    return c.json({ stats: buildCardStats(event, states, cardKey) })
   })
 
   app.use('/:eventSlug/state', requireAuth)
@@ -552,6 +761,7 @@ export function createCardTradesRoutes(db: Db) {
     await upsertEventState(db, event, user.id, migrated, {
       enabled: current?.shareEnabled ?? false,
       slug: current?.shareSlug ?? null,
+      acceptTradeOffers: current?.acceptTradeOffers ?? true,
     })
     return c.json({ data: migrated })
   })
@@ -566,7 +776,8 @@ export function createCardTradesRoutes(db: Db) {
     return c.json({
       share: {
         enabled: row?.shareEnabled ?? false,
-        slug: row?.shareSlug ?? user.username,
+        slug: row?.shareSlug ?? '',
+        acceptTradeOffers: row?.acceptTradeOffers ?? true,
       },
     })
   })
@@ -576,28 +787,399 @@ export function createCardTradesRoutes(db: Db) {
     if (!event) return c.json({ error: 'Event not found' }, 404)
 
     const user = c.get('user')!
+    if (!user.uid) {
+      return c.json({ error: 'Set your game UID in site settings before sharing' }, 400)
+    }
+
     const body = await c.req.json().catch(() => null)
     const schema = z.object({
       enabled: z.boolean(),
-      slug: shareSlugSchema.optional(),
+      acceptTradeOffers: z.boolean().optional(),
     })
     const parsed = schema.safeParse(body)
     if (!parsed.success) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
     }
 
-    const slug = parsed.data.slug?.trim() || user.username
-    if (await shareSlugTaken(db, event, slug, user.id)) {
-      return c.json({ error: 'This link is already taken' }, 409)
+    const current = await loadEventState(db, event, user.id)
+    let slug = current?.shareSlug ?? null
+    if (parsed.data.enabled) {
+      try {
+        slug = await allocateShareSlug(db, event, user.id, user.uid, slug)
+      } catch {
+        return c.json({ error: 'Could not allocate share link' }, 500)
+      }
+    } else if (!slug) {
+      slug = await allocateShareSlug(db, event, user.id, user.uid, null)
     }
 
-    await updateShareOnly(db, event, user.id, parsed.data.enabled, slug)
+    const acceptTradeOffers = parsed.data.acceptTradeOffers ?? current?.acceptTradeOffers ?? true
+    await updateShareOnly(db, event, user.id, {
+      enabled: parsed.data.enabled,
+      slug,
+      acceptTradeOffers,
+    })
     return c.json({
       share: {
         enabled: parsed.data.enabled,
         slug,
+        acceptTradeOffers,
       },
     })
+  })
+
+  // ─── P2P trade proposals ───────────────────────────────────────────────────
+
+  type ProposalDto = {
+    id: string
+    type: 'trade' | 'gift'
+    status: string
+    offeredCardKey: string | null
+    requestedCardKey: string
+    createdAt: string
+    updatedAt: string
+    direction: 'incoming' | 'outgoing'
+    counterparty: {
+      username: string
+      shareSlug: string | null
+      uid: string | null
+    }
+  }
+
+  async function resolveShareSlugForUser(
+    event: CardTradeEventDetail,
+    userId: string,
+  ): Promise<string | null> {
+    const row = await loadEventState(db, event, userId)
+    return row?.shareEnabled ? row.shareSlug : row?.shareSlug ?? null
+  }
+
+  async function toProposalDto(
+    event: CardTradeEventDetail,
+    row: typeof cardTradeProposals.$inferSelect,
+    viewerId: string,
+  ): Promise<ProposalDto> {
+    const direction: 'incoming' | 'outgoing' = row.toUserId === viewerId ? 'incoming' : 'outgoing'
+    const counterpartyId = direction === 'incoming' ? row.fromUserId : row.toUserId
+    const [counterparty] = await db
+      .select({ username: users.username, uid: users.uid })
+      .from(users)
+      .where(eq(users.id, counterpartyId))
+      .limit(1)
+    const shareSlug = await resolveShareSlugForUser(event, counterpartyId)
+    const revealUid = row.status === 'accepted'
+
+    return {
+      id: row.id,
+      type: row.type as 'trade' | 'gift',
+      status: row.status,
+      offeredCardKey: row.offeredCardKey,
+      requestedCardKey: row.requestedCardKey,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      direction,
+      counterparty: {
+        username: counterparty?.username ?? '?',
+        shareSlug,
+        uid: revealUid ? (counterparty?.uid ?? null) : null,
+      },
+    }
+  }
+
+  app.use('/:eventSlug/proposals', requireAuth)
+  app.use('/:eventSlug/proposals/*', requireAuth)
+
+  app.get('/:eventSlug/proposals', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const user = c.get('user')!
+    const rows = await db
+      .select()
+      .from(cardTradeProposals)
+      .where(
+        and(
+          eq(cardTradeProposals.eventId, event.id),
+          or(eq(cardTradeProposals.fromUserId, user.id), eq(cardTradeProposals.toUserId, user.id)),
+        ),
+      )
+      .orderBy(desc(cardTradeProposals.createdAt))
+
+    const incoming: ProposalDto[] = []
+    const outgoing: ProposalDto[] = []
+    for (const row of rows) {
+      const dto = await toProposalDto(event, row, user.id)
+      if (dto.direction === 'incoming') incoming.push(dto)
+      else outgoing.push(dto)
+    }
+
+    return c.json({ incoming, outgoing })
+  })
+
+  app.post('/:eventSlug/proposals', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const user = c.get('user')!
+    const body = await c.req.json().catch(() => null)
+    const schema = z.object({
+      toShareSlug: z.string().trim().min(1).max(64),
+      type: z.enum(['trade', 'gift']),
+      offeredCardKey: z.string().trim().min(1).max(32).nullable().optional(),
+      requestedCardKey: z.string().trim().min(1).max(32),
+    })
+    const parsed = schema.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
+    }
+
+    const { toShareSlug, type, requestedCardKey } = parsed.data
+    const offeredCardKey = type === 'trade' ? (parsed.data.offeredCardKey ?? null) : null
+    if (type === 'trade' && !offeredCardKey) {
+      return c.json({ error: 'offeredCardKey is required for trade' }, 400)
+    }
+    if (!event.cards.some((card) => card.id === requestedCardKey)) {
+      return c.json({ error: 'Unknown requested card' }, 400)
+    }
+    if (offeredCardKey && !event.cards.some((card) => card.id === offeredCardKey)) {
+      return c.json({ error: 'Unknown offered card' }, 400)
+    }
+
+    const shared = await listSharedRows(db, event)
+    const target = shared.find((row) => row.shareSlug === toShareSlug)
+    if (!target) return c.json({ error: 'Collection not found' }, 404)
+    if (target.userId === user.id) return c.json({ error: 'Cannot propose to yourself' }, 400)
+    if (!target.acceptTradeOffers) {
+      return c.json({ error: 'User does not accept trade offers' }, 403)
+    }
+
+    const fromState = migrateState(((await loadEventState(db, event, user.id))?.data ?? EMPTY_STATE) as AppState)
+    if (type === 'trade') {
+      if ((fromState.owned[offeredCardKey!] ?? 0) < 1) {
+        return c.json({ error: 'You do not own the offered card' }, 400)
+      }
+    }
+    if ((migrateState(target.data).owned[requestedCardKey] ?? 0) < 1 && type === 'trade') {
+      // still allow gift/trade request for cards they might have — for trade they need the card
+    }
+    if ((migrateState(target.data).owned[requestedCardKey] ?? 0) < 1) {
+      return c.json({ error: 'Target does not own the requested card' }, 400)
+    }
+
+    const pendingSame = await db
+      .select()
+      .from(cardTradeProposals)
+      .where(
+        and(
+          eq(cardTradeProposals.eventId, event.id),
+          eq(cardTradeProposals.fromUserId, user.id),
+          eq(cardTradeProposals.toUserId, target.userId),
+          eq(cardTradeProposals.status, 'pending'),
+        ),
+      )
+    const dup = pendingSame.find(
+      (p) =>
+        p.type === type &&
+        p.requestedCardKey === requestedCardKey &&
+        (p.offeredCardKey ?? null) === (offeredCardKey ?? null),
+    )
+    if (dup) {
+      return c.json({ error: 'Identical pending proposal already exists' }, 409)
+    }
+
+    const [created] = await db
+      .insert(cardTradeProposals)
+      .values({
+        eventId: event.id,
+        fromUserId: user.id,
+        toUserId: target.userId,
+        type,
+        offeredCardKey,
+        requestedCardKey,
+        status: 'pending',
+      })
+      .returning()
+
+    return c.json({ proposal: await toProposalDto(event, created!, user.id) }, 201)
+  })
+
+  app.post('/:eventSlug/proposals/:id/accept', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const user = c.get('user')!
+    const id = c.req.param('id')
+
+    try {
+      const updated = await db.transaction(async (tx) => {
+        const [claimed] = await tx
+          .update(cardTradeProposals)
+          .set({ status: 'accepted', updatedAt: new Date() })
+          .where(
+            and(
+              eq(cardTradeProposals.id, id),
+              eq(cardTradeProposals.eventId, event.id),
+              eq(cardTradeProposals.toUserId, user.id),
+              eq(cardTradeProposals.status, 'pending'),
+            ),
+          )
+          .returning()
+
+        if (!claimed) {
+          const [existing] = await tx
+            .select()
+            .from(cardTradeProposals)
+            .where(and(eq(cardTradeProposals.id, id), eq(cardTradeProposals.eventId, event.id)))
+            .limit(1)
+          if (!existing) throw new AcceptConflict('Proposal not found', 404)
+          if (existing.toUserId !== user.id) throw new AcceptConflict('Only recipient can accept', 403)
+          throw new AcceptConflict('Proposal is not pending', 409)
+        }
+
+        const lockA =
+          claimed.fromUserId < claimed.toUserId ? claimed.fromUserId : claimed.toUserId
+        const lockB =
+          claimed.fromUserId < claimed.toUserId ? claimed.toUserId : claimed.fromUserId
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`${event.id}:${lockA}`}), hashtext(${`${event.id}:${lockB}`}))`,
+        )
+
+        const toShare = await loadEventState(tx as unknown as Db, event, user.id)
+        if (toShare && !toShare.acceptTradeOffers) {
+          throw new AcceptConflict('You are not accepting trade offers', 403)
+        }
+
+        const fromRow = await loadEventState(tx as unknown as Db, event, claimed.fromUserId)
+        const toRow = await loadEventState(tx as unknown as Db, event, claimed.toUserId)
+        let fromState = migrateState((fromRow?.data ?? EMPTY_STATE) as AppState)
+        let toState = migrateState((toRow?.data ?? EMPTY_STATE) as AppState)
+
+        const [fromUser] = await tx
+          .select({ username: users.username, uid: users.uid })
+          .from(users)
+          .where(eq(users.id, claimed.fromUserId))
+          .limit(1)
+        const [toUser] = await tx
+          .select({ username: users.username, uid: users.uid })
+          .from(users)
+          .where(eq(users.id, claimed.toUserId))
+          .limit(1)
+
+        if (claimed.type === 'trade') {
+          const offered = claimed.offeredCardKey!
+          if ((fromState.owned[offered] ?? 0) < 1) {
+            throw new AcceptConflict('Sender no longer owns the offered card', 409)
+          }
+          if ((toState.owned[claimed.requestedCardKey] ?? 0) < 1) {
+            throw new AcceptConflict('You no longer own the requested card', 409)
+          }
+          fromState = {
+            ...fromState,
+            owned: adjustOwned(adjustOwned(fromState.owned, offered, -1), claimed.requestedCardKey, 1),
+          }
+          toState = {
+            ...toState,
+            owned: adjustOwned(adjustOwned(toState.owned, claimed.requestedCardKey, -1), offered, 1),
+          }
+          fromState = appendCompletedTrade(fromState, {
+            givenCardId: offered,
+            receivedCardId: claimed.requestedCardKey,
+            partner: toUser?.username,
+          })
+          toState = appendCompletedTrade(toState, {
+            givenCardId: claimed.requestedCardKey,
+            receivedCardId: offered,
+            partner: fromUser?.username,
+          })
+        } else {
+          if ((toState.owned[claimed.requestedCardKey] ?? 0) < 1) {
+            throw new AcceptConflict('You no longer own the requested card', 409)
+          }
+          toState = {
+            ...toState,
+            owned: adjustOwned(toState.owned, claimed.requestedCardKey, -1),
+          }
+          fromState = {
+            ...fromState,
+            owned: adjustOwned(fromState.owned, claimed.requestedCardKey, 1),
+          }
+          toState = appendCompletedTrade(toState, {
+            givenCardId: claimed.requestedCardKey,
+            partner: fromUser?.username,
+          })
+        }
+
+        await upsertEventState(tx as unknown as Db, event, claimed.fromUserId, fromState, {
+          enabled: fromRow?.shareEnabled ?? false,
+          slug: fromRow?.shareSlug ?? null,
+          acceptTradeOffers: fromRow?.acceptTradeOffers ?? true,
+        })
+        await upsertEventState(tx as unknown as Db, event, claimed.toUserId, toState, {
+          enabled: toRow?.shareEnabled ?? false,
+          slug: toRow?.shareSlug ?? null,
+          acceptTradeOffers: toRow?.acceptTradeOffers ?? true,
+        })
+
+        return claimed
+      })
+
+      return c.json({ proposal: await toProposalDto(event, updated, user.id) })
+    } catch (err) {
+      if (err instanceof AcceptConflict) {
+        return c.json({ error: err.message }, err.status)
+      }
+      throw err
+    }
+  })
+
+  app.post('/:eventSlug/proposals/:id/reject', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const user = c.get('user')!
+    const id = c.req.param('id')
+    const [proposal] = await db
+      .select()
+      .from(cardTradeProposals)
+      .where(and(eq(cardTradeProposals.id, id), eq(cardTradeProposals.eventId, event.id)))
+      .limit(1)
+
+    if (!proposal) return c.json({ error: 'Proposal not found' }, 404)
+    if (proposal.toUserId !== user.id) return c.json({ error: 'Only recipient can reject' }, 403)
+    if (proposal.status !== 'pending') return c.json({ error: 'Proposal is not pending' }, 409)
+
+    const [updated] = await db
+      .update(cardTradeProposals)
+      .set({ status: 'rejected', updatedAt: new Date() })
+      .where(eq(cardTradeProposals.id, proposal.id))
+      .returning()
+
+    return c.json({ proposal: await toProposalDto(event, updated!, user.id) })
+  })
+
+  app.post('/:eventSlug/proposals/:id/cancel', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const user = c.get('user')!
+    const id = c.req.param('id')
+    const [proposal] = await db
+      .select()
+      .from(cardTradeProposals)
+      .where(and(eq(cardTradeProposals.id, id), eq(cardTradeProposals.eventId, event.id)))
+      .limit(1)
+
+    if (!proposal) return c.json({ error: 'Proposal not found' }, 404)
+    if (proposal.fromUserId !== user.id) return c.json({ error: 'Only sender can cancel' }, 403)
+    if (proposal.status !== 'pending') return c.json({ error: 'Proposal is not pending' }, 409)
+
+    const [updated] = await db
+      .update(cardTradeProposals)
+      .set({ status: 'cancelled', updatedAt: new Date() })
+      .where(eq(cardTradeProposals.id, proposal.id))
+      .returning()
+
+    return c.json({ proposal: await toProposalDto(event, updated!, user.id) })
   })
 
   app.use('/admin/events', requireAuth, requirePermission('events:manage'))

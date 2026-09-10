@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { I18nProvider } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
+import { SiteFooter } from '../components/SiteFooter'
 import * as api from '../api/client'
 import '../App.css'
 
@@ -115,7 +116,7 @@ function CardTradesHubContent() {
           </p>
           {auth.status === 'unauthenticated' && (
             <p className="hub-welcome__cta">
-              <Link to="/card-trades/summer-party" className="btn btn--primary">
+              <Link to="/summer-party" className="btn btn--primary">
                 {isRu ? 'Войти / Регистрация' : 'Sign In / Register'}
               </Link>
             </p>
@@ -147,7 +148,7 @@ function CardTradesHubContent() {
                   </p>
                 </div>
                 {event.active ? (
-                  <Link to={`/card-trades/${event.slug}`} className="btn btn--primary hub-event-card__btn">
+                  <Link to={`/${event.slug}`} className="btn btn--primary hub-event-card__btn">
                     {isRu ? 'Открыть трекер' : 'Open Tracker'}
                   </Link>
                 ) : (
@@ -160,9 +161,7 @@ function CardTradesHubContent() {
           </div>
         </section>
 
-        <footer className="hub-footer">
-          <Link to="/">← {isRu ? 'Все ресурсы' : 'All resources'}</Link>
-        </footer>
+        <SiteFooter />
       </div>
     </I18nProvider>
   )

@@ -11,6 +11,7 @@ import type {
 } from '../api/client'
 import * as api from '../api/client'
 import { BRAND_NAME } from '../brand'
+import { SiteFooter } from '../components/SiteFooter'
 import '../App.css'
 
 type AdminData = {
@@ -117,6 +118,7 @@ function AdminShell() {
           <Outlet context={{ user, data, refresh }} />
         ) : null}
       </main>
+      <SiteFooter />
     </div>
   )
 }
@@ -674,8 +676,8 @@ export function AdminEventsTab() {
           })
       setResult(
         editingEventId
-          ? `Эвент обновлён: /card-trades/${event.slug}`
-          : `Эвент создан: /card-trades/${event.slug}`,
+          ? `Эвент обновлён: /${event.slug}`
+          : `Эвент создан: /${event.slug}`,
       )
       resetForm()
       await refreshEvents()
@@ -826,7 +828,7 @@ export function AdminEventsTab() {
                 )}
               </div>
               <p className="admin-role-card__desc">
-                `/card-trades/{event.slug}` · {event.startDate} - {event.endDate}
+                `/${event.slug}` · {event.startDate} - {event.endDate}
               </p>
               <div className="admin-role-card__perms">
                 <span className="admin-perm-tag">{event.setCount} сетов</span>

@@ -12,6 +12,7 @@ interface Props {
   owned: Record<string, number>
   tradeNeedCardIds: Set<string>
   readOnly?: boolean
+  onCardClick?: (card: Card) => void
   onToggleNeeded?: (cardId: string, accountId: string) => void
   onSetNeededForAll?: (cardId: string, needed: boolean) => void
   onToggleStar?: (cardId: string) => void
@@ -24,6 +25,7 @@ export function WishlistView({
   owned,
   tradeNeedCardIds,
   readOnly = false,
+  onCardClick,
   onToggleNeeded,
   onSetNeededForAll,
   onToggleStar,
@@ -76,12 +78,7 @@ export function WishlistView({
 
   return (
     <section className="panel">
-      <header className="panel__head">
-        <div>
-          <h2>{t('wishlist.title')}</h2>
-          <p>{t('wishlist.lead', { n: missingCount })}</p>
-        </div>
-      </header>
+      <p className="panel__lead">{t('wishlist.lead', { n: missingCount })}</p>
 
       <div className="filters">
         <SearchField
@@ -119,6 +116,7 @@ export function WishlistView({
                 card={c}
                 qty={qty}
                 dimmed={qty > 0 && needed.length === 0 && !isTradeNeed}
+                onClick={onCardClick ? () => onCardClick(c) : undefined}
                 actions={
                   readOnly ? (
                     <>

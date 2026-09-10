@@ -6,6 +6,7 @@ import {
   type CozyFarmCropInject,
 } from '../components/cozy-farm/CozyFarmOptimizer'
 import type { AuthOutletContext } from '../components/RequireAuth'
+import { SiteFooter } from '../components/SiteFooter'
 import { I18nProvider, localeTag, useI18n, type MessageKey } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import * as api from '../api/client'
@@ -74,7 +75,8 @@ function listingBonus(listing: CozyFarmListing, fruit: CozyFarmFruit): number | 
 type FruitSort = { fruit: CozyFarmFruit }
 
 function CozyFarmShell() {
-  const { user, logout } = useOutletContext<AuthOutletContext>()
+  const { user, logout, setUid, uploadAvatar, accounts, switchAccount, removeAccount, addAccount } =
+    useOutletContext<AuthOutletContext>()
   const { t, locale, setLocale } = useI18n()
   const [listings, setListings] = useState<CozyFarmListing[]>([])
   const [loading, setLoading] = useState(true)
@@ -258,8 +260,17 @@ function CozyFarmShell() {
 
       <AppToolbar
         username={user.username}
+        uid={user.uid}
+        avatarUrl={user.avatarUrl}
+        userId={user.id}
         permissions={user.permissions}
+        accounts={accounts}
         onLogout={logout}
+        onSetUid={setUid}
+        onUploadAvatar={uploadAvatar}
+        onSwitchAccount={switchAccount}
+        onRemoveAccount={removeAccount}
+        onAddAccount={addAccount}
         locale={locale}
         onLocaleChange={setLocale}
       />
@@ -559,6 +570,7 @@ function CozyFarmShell() {
           </div>
         )}
       </section>
+      <SiteFooter />
     </div>
   )
 }

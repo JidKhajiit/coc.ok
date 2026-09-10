@@ -10,7 +10,6 @@ import { TradeTemplates } from './TradeTemplates'
 type SortMode = 'number' | 'rarity-asc' | 'rarity-desc'
 
 interface Props {
-  username: string
   cards: Card[]
   sets: CardSet[]
   owned: Record<string, number>
@@ -20,6 +19,7 @@ interface Props {
   reservedPartners: Record<string, string[]>
   tradeNeedCardIds: Set<string>
   readOnly?: boolean
+  onCardClick?: (card: Card) => void
   onAdjust?: (cardId: string, delta: number) => void
   onToggleNeeded?: (cardId: string, accountId: string) => void
   onSetNeededForAll?: (cardId: string, needed: boolean) => void
@@ -33,7 +33,6 @@ function compareCards(a: Card, b: Card, sort: SortMode): number {
 }
 
 export function CollectionView({
-  username,
   cards,
   sets,
   owned,
@@ -43,6 +42,7 @@ export function CollectionView({
   reservedPartners,
   tradeNeedCardIds,
   readOnly = false,
+  onCardClick,
   onAdjust,
   onToggleNeeded,
   onSetNeededForAll,
@@ -129,6 +129,7 @@ export function CollectionView({
         reservedFor={reservedPartners[c.id]}
         dimmed={qty === 0}
         showSet={sort !== 'number'}
+        onClick={onCardClick ? () => onCardClick(c) : undefined}
         actions={
           readOnly ? undefined : (
           <>
@@ -186,15 +187,6 @@ export function CollectionView({
 
   return (
     <section className="panel">
-      <header className="panel__head">
-        <div>
-          <p className="panel__eyebrow">{t('collection.title')}</p>
-          <h2 className="panel__title">
-            <span className="panel__username">{username}</span>
-          </h2>
-        </div>
-      </header>
-
       {!readOnly && (
         <TradeTemplates
           cards={cards}

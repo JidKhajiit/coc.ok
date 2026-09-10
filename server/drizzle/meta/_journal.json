@@ -64,6 +64,34 @@
       "when": 1757095200000,
       "tag": "0008_card_trade_events",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1757520000000,
+      "tag": "0009_user_uid",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1757530000000,
+      "tag": "0010_device_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1757540000000,
+      "tag": "0011_user_avatar",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1757550000000,
+      "tag": "0012_share_privacy_proposals",
+      "breakpoints": true
     }
   ]
 }

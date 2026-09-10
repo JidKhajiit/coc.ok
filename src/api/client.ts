@@ -1,9 +1,12 @@
 import type { Account, AppState, Card, TrendItem } from '../types'
 import type { CardSet } from '../data/cards'
 
+export type PopularityTier = 'S' | 'A' | 'B' | 'C' | 'D'
+
 export type PublicCollection = {
   slug: string
   username: string
+  acceptTradeOffers: boolean
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   accounts: Account[]
@@ -11,6 +14,9 @@ export type PublicCollection = {
   stats: {
     uniqueOwned: number
     neededCount: number
+    tradeable: number
+    tradesToday: number
+    tradeAttemptsLeft: number
   }
   event: {
     slug: string
@@ -22,10 +28,14 @@ export type PublicCollection = {
 export type PublicCollectionSummary = {
   slug: string
   username: string
+  acceptTradeOffers: boolean
   updatedAt: string
   stats: {
     uniqueOwned: number
     neededCount: number
+    tradeable: number
+    tradesToday: number
+    tradeAttemptsLeft: number
   }
   event: {
     slug: string
@@ -37,6 +47,35 @@ export type PublicCollectionSummary = {
 export type ShareSettings = {
   enabled: boolean
   slug: string
+  acceptTradeOffers: boolean
+}
+
+export type CardStats = {
+  cardId: string
+  givenCount: number
+  requestedCount: number
+  score: number
+  rank: number | null
+  totalCards: number
+  tier: PopularityTier
+}
+
+export type TradeProposalType = 'trade' | 'gift'
+
+export type TradeProposal = {
+  id: string
+  type: TradeProposalType
+  status: string
+  offeredCardKey: string | null
+  requestedCardKey: string
+  createdAt: string
+  updatedAt: string
+  direction: 'incoming' | 'outgoing'
+  counterparty: {
+    username: string
+    shareSlug: string | null
+    uid: string | null
+  }
 }
 
 export type CardTradeEventSummary = {
@@ -74,7 +113,22 @@ export class ApiError extends Error {
 export type AuthUser = {
   id: string
   username: string
+  uid: string | null
+  avatarUrl: string | null
   permissions: string[]
+}
+
+export type DeviceAccount = {
+  id: string
+  username: string
+  uid: string | null
+  avatarUrl: string | null
+  active: boolean
+}
+
+export type AuthSessionPayload = {
+  user: AuthUser | null
+  accounts: DeviceAccount[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,28 +193,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-export async function getMe(): Promise<AuthUser | null> {
-  const { user } = await request<{ user: AuthUser | null }>('/api/auth/me')
-  return user
+export async function getMe(): Promise<AuthSessionPayload> {
+  return request<AuthSessionPayload>('/api/auth/me')
 }
 
-export async function login(login: string, password: string): Promise<AuthUser> {
-  const { user } = await request<{ user: AuthUser }>('/api/auth/login', {
+export async function login(login: string, password: string): Promise<AuthSessionPayload> {
+  return request<AuthSessionPayload>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ login, password }),
   })
-  return user
 }
 
 export async function register(
   username: string,
+  uid: string,
   email: string,
   password: string,
 ): Promise<{ needsVerification: boolean; message: string }> {
   return request('/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ username, email, password }),
+    body: JSON.stringify({ username, uid, email, password }),
   })
+}
+
+export async function setUid(uid: string): Promise<AuthUser> {
+  const { user } = await request<{ user: AuthUser }>('/api/auth/uid', {
+    method: 'PUT',
+    body: JSON.stringify({ uid }),
+  })
+  return user
+}
+
+export async function uploadAvatar(file: File): Promise<AuthSessionPayload> {
+  const form = new FormData()
+  form.append('avatar', file)
+  const res = await fetch('/api/auth/avatar', {
+    method: 'PUT',
+    credentials: 'include',
+    body: form,
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const message = typeof body.error === 'string' ? body.error : `Request failed (${res.status})`
+    throw new ApiError(message, res.status)
+  }
+  return body as AuthSessionPayload
 }
 
 export async function verifyEmail(token: string): Promise<void> {
@@ -191,8 +268,27 @@ export async function resendVerification(email: string): Promise<{ message: stri
   })
 }
 
-export async function logout(): Promise<void> {
-  await request('/api/auth/logout', { method: 'POST' })
+export async function logout(): Promise<AuthSessionPayload> {
+  return request<AuthSessionPayload>('/api/auth/logout', { method: 'POST' })
+}
+
+export async function listDeviceAccounts(): Promise<DeviceAccount[]> {
+  const { accounts } = await request<{ accounts: DeviceAccount[] }>('/api/auth/accounts')
+  return accounts
+}
+
+export async function switchAccount(userId: string): Promise<AuthSessionPayload> {
+  return request<AuthSessionPayload>('/api/auth/switch', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  })
+}
+
+export async function removeDeviceAccount(userId: string): Promise<AuthSessionPayload> {
+  return request<AuthSessionPayload>('/api/auth/accounts/remove', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  })
 }
 
 export async function getState(): Promise<AppState> {
@@ -227,10 +323,13 @@ export async function getShareSettings(): Promise<ShareSettings> {
   return share
 }
 
-export async function updateShareSettings(settings: ShareSettings): Promise<ShareSettings> {
+export async function updateShareSettings(settings: {
+  enabled: boolean
+  acceptTradeOffers?: boolean
+}): Promise<ShareSettings> {
   const { share } = await request<{ share: ShareSettings }>('/api/card-trades/share', {
     method: 'PUT',
-    body: JSON.stringify({ enabled: settings.enabled, slug: settings.slug }),
+    body: JSON.stringify(settings),
   })
   return share
 }
@@ -272,9 +371,18 @@ export async function getEventTrends(eventSlug: string): Promise<CardTradeEventT
   return trends
 }
 
-export async function listEventPublicCollections(eventSlug: string): Promise<PublicCollectionSummary[]> {
+export async function listEventPublicCollections(
+  eventSlug: string,
+  filter?: { cardId: string; role: 'needed' | 'owned' },
+): Promise<PublicCollectionSummary[]> {
+  const params = new URLSearchParams()
+  if (filter) {
+    params.set('cardId', filter.cardId)
+    params.set('role', filter.role)
+  }
+  const qs = params.toString()
   const { collections } = await request<{ collections: PublicCollectionSummary[] }>(
-    `/api/card-trades/${encodeURIComponent(eventSlug)}/collections`,
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/collections${qs ? `?${qs}` : ''}`,
   )
   return collections
 }
@@ -297,16 +405,79 @@ export async function getEventShareSettings(eventSlug: string): Promise<ShareSet
 
 export async function updateEventShareSettings(
   eventSlug: string,
-  settings: ShareSettings,
+  settings: { enabled: boolean; acceptTradeOffers?: boolean },
 ): Promise<ShareSettings> {
   const { share } = await request<{ share: ShareSettings }>(
     `/api/card-trades/${encodeURIComponent(eventSlug)}/share`,
     {
       method: 'PUT',
-      body: JSON.stringify({ enabled: settings.enabled, slug: settings.slug }),
+      body: JSON.stringify({
+        enabled: settings.enabled,
+        ...(settings.acceptTradeOffers !== undefined
+          ? { acceptTradeOffers: settings.acceptTradeOffers }
+          : {}),
+      }),
     },
   )
   return share
+}
+
+export async function getEventCardStats(eventSlug: string, cardId: string): Promise<CardStats> {
+  const { stats } = await request<{ stats: CardStats }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/cards/${encodeURIComponent(cardId)}/stats`,
+  )
+  return stats
+}
+
+export async function listEventProposals(
+  eventSlug: string,
+): Promise<{ incoming: TradeProposal[]; outgoing: TradeProposal[] }> {
+  return request<{ incoming: TradeProposal[]; outgoing: TradeProposal[] }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/proposals`,
+  )
+}
+
+export async function createEventProposal(
+  eventSlug: string,
+  input: {
+    toShareSlug: string
+    type: TradeProposalType
+    offeredCardKey?: string | null
+    requestedCardKey: string
+  },
+): Promise<TradeProposal> {
+  const { proposal } = await request<{ proposal: TradeProposal }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/proposals`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+  return proposal
+}
+
+export async function acceptEventProposal(eventSlug: string, id: string): Promise<TradeProposal> {
+  const { proposal } = await request<{ proposal: TradeProposal }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/proposals/${encodeURIComponent(id)}/accept`,
+    { method: 'POST' },
+  )
+  return proposal
+}
+
+export async function rejectEventProposal(eventSlug: string, id: string): Promise<TradeProposal> {
+  const { proposal } = await request<{ proposal: TradeProposal }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/proposals/${encodeURIComponent(id)}/reject`,
+    { method: 'POST' },
+  )
+  return proposal
+}
+
+export async function cancelEventProposal(eventSlug: string, id: string): Promise<TradeProposal> {
+  const { proposal } = await request<{ proposal: TradeProposal }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/proposals/${encodeURIComponent(id)}/cancel`,
+    { method: 'POST' },
+  )
+  return proposal
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
