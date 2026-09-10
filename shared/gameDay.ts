@@ -1,12 +1,29 @@
-/** Clash of Critters game-day reset — 03:00 local time */
+/** Clash of Critters game-day reset — 03:00 Europe/Moscow (UTC+3, no DST). */
 export const GAME_DAY_RESET_HOUR = 3
 
-function getGameDayKey(date: Date): string {
-  const d = new Date(date.getTime())
-  if (d.getHours() < GAME_DAY_RESET_HOUR) {
-    d.setDate(d.getDate() - 1)
+/** Fixed offset so server public stats and client tracker use the same calendar day. */
+const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000
+
+function moscowWallParts(date: Date): { year: number; month: number; day: number; hour: number } {
+  const shifted = new Date(date.getTime() + MOSCOW_OFFSET_MS)
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth(),
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
   }
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function getGameDayKey(date: Date): string {
+  const parts = moscowWallParts(date)
+  let { year, month, day, hour } = parts
+  if (hour < GAME_DAY_RESET_HOUR) {
+    const prev = new Date(Date.UTC(year, month, day - 1))
+    year = prev.getUTCFullYear()
+    month = prev.getUTCMonth()
+    day = prev.getUTCDate()
+  }
+  return `${year}-${month}-${day}`
 }
 
 export function isSameGameDay(iso: string, now = new Date()): boolean {

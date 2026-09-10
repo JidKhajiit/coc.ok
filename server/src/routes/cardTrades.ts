@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, desc, eq, or } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/index.js'
 import {
@@ -573,6 +573,14 @@ function newTradeId() {
   return randomId()
 }
 
+class AcceptConflict extends Error {
+  status: 403 | 404 | 409
+  constructor(message: string, status: 403 | 404 | 409) {
+    super(message)
+    this.status = status
+  }
+}
+
 function randomId() {
   return generateShareSlug() + generateShareSlug()
 }
@@ -1001,101 +1009,127 @@ export function createCardTradesRoutes(db: Db) {
 
     const user = c.get('user')!
     const id = c.req.param('id')
-    const [proposal] = await db
-      .select()
-      .from(cardTradeProposals)
-      .where(and(eq(cardTradeProposals.id, id), eq(cardTradeProposals.eventId, event.id)))
-      .limit(1)
 
-    if (!proposal) return c.json({ error: 'Proposal not found' }, 404)
-    if (proposal.toUserId !== user.id) return c.json({ error: 'Only recipient can accept' }, 403)
-    if (proposal.status !== 'pending') return c.json({ error: 'Proposal is not pending' }, 409)
+    try {
+      const updated = await db.transaction(async (tx) => {
+        const [claimed] = await tx
+          .update(cardTradeProposals)
+          .set({ status: 'accepted', updatedAt: new Date() })
+          .where(
+            and(
+              eq(cardTradeProposals.id, id),
+              eq(cardTradeProposals.eventId, event.id),
+              eq(cardTradeProposals.toUserId, user.id),
+              eq(cardTradeProposals.status, 'pending'),
+            ),
+          )
+          .returning()
 
-    const toShare = await loadEventState(db, event, user.id)
-    if (toShare && !toShare.acceptTradeOffers) {
-      return c.json({ error: 'You are not accepting trade offers' }, 403)
+        if (!claimed) {
+          const [existing] = await tx
+            .select()
+            .from(cardTradeProposals)
+            .where(and(eq(cardTradeProposals.id, id), eq(cardTradeProposals.eventId, event.id)))
+            .limit(1)
+          if (!existing) throw new AcceptConflict('Proposal not found', 404)
+          if (existing.toUserId !== user.id) throw new AcceptConflict('Only recipient can accept', 403)
+          throw new AcceptConflict('Proposal is not pending', 409)
+        }
+
+        const lockA =
+          claimed.fromUserId < claimed.toUserId ? claimed.fromUserId : claimed.toUserId
+        const lockB =
+          claimed.fromUserId < claimed.toUserId ? claimed.toUserId : claimed.fromUserId
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`${event.id}:${lockA}`}), hashtext(${`${event.id}:${lockB}`}))`,
+        )
+
+        const toShare = await loadEventState(tx as unknown as Db, event, user.id)
+        if (toShare && !toShare.acceptTradeOffers) {
+          throw new AcceptConflict('You are not accepting trade offers', 403)
+        }
+
+        const fromRow = await loadEventState(tx as unknown as Db, event, claimed.fromUserId)
+        const toRow = await loadEventState(tx as unknown as Db, event, claimed.toUserId)
+        let fromState = migrateState((fromRow?.data ?? EMPTY_STATE) as AppState)
+        let toState = migrateState((toRow?.data ?? EMPTY_STATE) as AppState)
+
+        const [fromUser] = await tx
+          .select({ username: users.username, uid: users.uid })
+          .from(users)
+          .where(eq(users.id, claimed.fromUserId))
+          .limit(1)
+        const [toUser] = await tx
+          .select({ username: users.username, uid: users.uid })
+          .from(users)
+          .where(eq(users.id, claimed.toUserId))
+          .limit(1)
+
+        if (claimed.type === 'trade') {
+          const offered = claimed.offeredCardKey!
+          if ((fromState.owned[offered] ?? 0) < 1) {
+            throw new AcceptConflict('Sender no longer owns the offered card', 409)
+          }
+          if ((toState.owned[claimed.requestedCardKey] ?? 0) < 1) {
+            throw new AcceptConflict('You no longer own the requested card', 409)
+          }
+          fromState = {
+            ...fromState,
+            owned: adjustOwned(adjustOwned(fromState.owned, offered, -1), claimed.requestedCardKey, 1),
+          }
+          toState = {
+            ...toState,
+            owned: adjustOwned(adjustOwned(toState.owned, claimed.requestedCardKey, -1), offered, 1),
+          }
+          fromState = appendCompletedTrade(fromState, {
+            givenCardId: offered,
+            receivedCardId: claimed.requestedCardKey,
+            partner: toUser?.username,
+          })
+          toState = appendCompletedTrade(toState, {
+            givenCardId: claimed.requestedCardKey,
+            receivedCardId: offered,
+            partner: fromUser?.username,
+          })
+        } else {
+          if ((toState.owned[claimed.requestedCardKey] ?? 0) < 1) {
+            throw new AcceptConflict('You no longer own the requested card', 409)
+          }
+          toState = {
+            ...toState,
+            owned: adjustOwned(toState.owned, claimed.requestedCardKey, -1),
+          }
+          fromState = {
+            ...fromState,
+            owned: adjustOwned(fromState.owned, claimed.requestedCardKey, 1),
+          }
+          toState = appendCompletedTrade(toState, {
+            givenCardId: claimed.requestedCardKey,
+            partner: fromUser?.username,
+          })
+        }
+
+        await upsertEventState(tx as unknown as Db, event, claimed.fromUserId, fromState, {
+          enabled: fromRow?.shareEnabled ?? false,
+          slug: fromRow?.shareSlug ?? null,
+          acceptTradeOffers: fromRow?.acceptTradeOffers ?? true,
+        })
+        await upsertEventState(tx as unknown as Db, event, claimed.toUserId, toState, {
+          enabled: toRow?.shareEnabled ?? false,
+          slug: toRow?.shareSlug ?? null,
+          acceptTradeOffers: toRow?.acceptTradeOffers ?? true,
+        })
+
+        return claimed
+      })
+
+      return c.json({ proposal: await toProposalDto(event, updated, user.id) })
+    } catch (err) {
+      if (err instanceof AcceptConflict) {
+        return c.json({ error: err.message }, err.status)
+      }
+      throw err
     }
-
-    const fromRow = await loadEventState(db, event, proposal.fromUserId)
-    const toRow = await loadEventState(db, event, proposal.toUserId)
-    let fromState = migrateState((fromRow?.data ?? EMPTY_STATE) as AppState)
-    let toState = migrateState((toRow?.data ?? EMPTY_STATE) as AppState)
-
-    const [fromUser] = await db
-      .select({ username: users.username, uid: users.uid })
-      .from(users)
-      .where(eq(users.id, proposal.fromUserId))
-      .limit(1)
-    const [toUser] = await db
-      .select({ username: users.username, uid: users.uid })
-      .from(users)
-      .where(eq(users.id, proposal.toUserId))
-      .limit(1)
-
-    if (proposal.type === 'trade') {
-      const offered = proposal.offeredCardKey!
-      if ((fromState.owned[offered] ?? 0) < 1) {
-        return c.json({ error: 'Sender no longer owns the offered card' }, 409)
-      }
-      if ((toState.owned[proposal.requestedCardKey] ?? 0) < 1) {
-        return c.json({ error: 'You no longer own the requested card' }, 409)
-      }
-      fromState = {
-        ...fromState,
-        owned: adjustOwned(adjustOwned(fromState.owned, offered, -1), proposal.requestedCardKey, 1),
-      }
-      toState = {
-        ...toState,
-        owned: adjustOwned(adjustOwned(toState.owned, proposal.requestedCardKey, -1), offered, 1),
-      }
-      fromState = appendCompletedTrade(fromState, {
-        givenCardId: offered,
-        receivedCardId: proposal.requestedCardKey,
-        partner: toUser?.username,
-      })
-      toState = appendCompletedTrade(toState, {
-        givenCardId: proposal.requestedCardKey,
-        receivedCardId: offered,
-        partner: fromUser?.username,
-      })
-    } else {
-      if ((toState.owned[proposal.requestedCardKey] ?? 0) < 1) {
-        return c.json({ error: 'You no longer own the requested card' }, 409)
-      }
-      toState = {
-        ...toState,
-        owned: adjustOwned(toState.owned, proposal.requestedCardKey, -1),
-      }
-      fromState = {
-        ...fromState,
-        owned: adjustOwned(fromState.owned, proposal.requestedCardKey, 1),
-      }
-      // Gift: to gives the card away; from receives it. Only the giver logs a trade
-      // so trends do not count the gift as "given" by the requester.
-      toState = appendCompletedTrade(toState, {
-        givenCardId: proposal.requestedCardKey,
-        partner: fromUser?.username,
-      })
-    }
-
-    await upsertEventState(db, event, proposal.fromUserId, fromState, {
-      enabled: fromRow?.shareEnabled ?? false,
-      slug: fromRow?.shareSlug ?? null,
-      acceptTradeOffers: fromRow?.acceptTradeOffers ?? true,
-    })
-    await upsertEventState(db, event, proposal.toUserId, toState, {
-      enabled: toRow?.shareEnabled ?? false,
-      slug: toRow?.shareSlug ?? null,
-      acceptTradeOffers: toRow?.acceptTradeOffers ?? true,
-    })
-
-    const [updated] = await db
-      .update(cardTradeProposals)
-      .set({ status: 'accepted', updatedAt: new Date() })
-      .where(eq(cardTradeProposals.id, proposal.id))
-      .returning()
-
-    return c.json({ proposal: await toProposalDto(event, updated!, user.id) })
   })
 
   app.post('/:eventSlug/proposals/:id/reject', async (c) => {
