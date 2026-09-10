@@ -32,8 +32,8 @@ const eventSlugSchema = z
 const shareSlugSchema = z
   .string()
   .trim()
-  .min(3)
-  .max(32)
+  .min(1)
+  .max(64)
   .regex(/^[a-zA-Z0-9_-]+$/, 'Slug may only contain letters, numbers, _ and -')
 
 const accountSchema = z.object({
@@ -96,6 +96,7 @@ const createCardTradeEventSchema = z.object({
 type PublicCollectionPayload = {
   slug: string
   username: string
+  uid: string | null
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   accounts: AppState['accounts']
@@ -114,6 +115,7 @@ type PublicCollectionPayload = {
 function toPublicPayload(
   shareSlug: string,
   username: string,
+  uid: string | null,
   data: AppState,
   updatedAt: Date,
   event: CardTradeEventDetail,
@@ -123,6 +125,7 @@ function toPublicPayload(
   return {
     slug: shareSlug,
     username,
+    uid: uid ?? shareSlug,
     owned: migrated.owned,
     neededBy: migrated.neededBy,
     accounts: migrated.accounts,
@@ -323,6 +326,7 @@ async function shareSlugTaken(db: Db, event: CardTradeEventDetail, slug: string,
 type SharedRow = {
   userId: string
   username: string
+  uid: string | null
   shareSlug: string
   updatedAt: Date
   data: AppState
@@ -339,6 +343,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
     .select({
       userId: cardTradeUserStates.userId,
       username: users.username,
+      uid: users.uid,
       shareSlug: cardTradeUserStates.shareSlug,
       updatedAt: cardTradeUserStates.updatedAt,
       data: cardTradeUserStates.data,
@@ -349,11 +354,12 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
     .orderBy(desc(cardTradeUserStates.updatedAt))
 
   const next = rows
-    .filter((row): row is SharedRow => Boolean(row.shareSlug))
+    .filter((row): row is typeof row & { shareSlug: string } => Boolean(row.shareSlug))
     .map((row) => ({
       userId: row.userId,
       username: row.username,
-      shareSlug: row.shareSlug!,
+      uid: row.uid,
+      shareSlug: row.shareSlug,
       updatedAt: row.updatedAt,
       data: row.data,
     }))
@@ -365,6 +371,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
     .select({
       userId: userStates.userId,
       username: users.username,
+      uid: users.uid,
       shareSlug: userStates.shareSlug,
       updatedAt: userStates.updatedAt,
       data: userStates.data,
@@ -379,6 +386,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
     next.push({
       userId: row.userId,
       username: row.username,
+      uid: row.uid,
       shareSlug: row.shareSlug,
       updatedAt: row.updatedAt,
       data: row.data,
@@ -477,6 +485,7 @@ export function createCardTradesRoutes(db: Db) {
       return {
         slug: row.shareSlug,
         username: row.username,
+        uid: row.uid ?? row.shareSlug,
         updatedAt: row.updatedAt.toISOString(),
         stats: {
           uniqueOwned: Object.keys(state.owned).filter((id) => (state.owned[id] ?? 0) > 0).length,
@@ -504,7 +513,7 @@ export function createCardTradesRoutes(db: Db) {
     if (!row) return c.json({ error: 'Collection not found' }, 404)
 
     return c.json({
-      collection: toPublicPayload(row.shareSlug, row.username, row.data, row.updatedAt, event),
+      collection: toPublicPayload(row.shareSlug, row.username, row.uid, row.data, row.updatedAt, event),
       event,
     })
   })
@@ -566,7 +575,7 @@ export function createCardTradesRoutes(db: Db) {
     return c.json({
       share: {
         enabled: row?.shareEnabled ?? false,
-        slug: row?.shareSlug ?? user.username,
+        slug: row?.shareSlug ?? user.uid,
       },
     })
   })
@@ -576,6 +585,10 @@ export function createCardTradesRoutes(db: Db) {
     if (!event) return c.json({ error: 'Event not found' }, 404)
 
     const user = c.get('user')!
+    if (!user.uid) {
+      return c.json({ error: 'Set your game UID in site settings before sharing' }, 400)
+    }
+
     const body = await c.req.json().catch(() => null)
     const schema = z.object({
       enabled: z.boolean(),
@@ -586,7 +599,7 @@ export function createCardTradesRoutes(db: Db) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
     }
 
-    const slug = parsed.data.slug?.trim() || user.username
+    const slug = user.uid
     if (await shareSlugTaken(db, event, slug, user.id)) {
       return c.json({ error: 'This link is already taken' }, 409)
     }

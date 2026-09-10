@@ -7,7 +7,7 @@ type Mode = 'login' | 'register' | 'forgot' | 'verify-sent'
 
 type Props = {
   onLogin: (login: string, password: string) => Promise<unknown>
-  onRegister: (username: string, email: string, password: string) => Promise<unknown>
+  onRegister: (username: string, uid: string, email: string, password: string) => Promise<unknown>
   onForgotPassword: (email: string) => Promise<unknown>
   onResendVerification: (email: string) => Promise<unknown>
   error: string | null
@@ -30,6 +30,7 @@ export function AuthPage({
   const [mode, setMode] = useState<Mode>('login')
   const [login, setLogin] = useState('')
   const [username, setUsername] = useState('')
+  const [uid, setUid] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pendingEmail, setPendingEmail] = useState('')
@@ -49,7 +50,7 @@ export function AuthPage({
         await onLogin(login.trim(), password)
       } else if (mode === 'register') {
         const normalizedEmail = email.trim()
-        await onRegister(username.trim(), normalizedEmail, password)
+        await onRegister(username.trim(), uid.trim(), normalizedEmail, password)
         setPendingEmail(normalizedEmail)
         setMode('verify-sent')
         setPassword('')
@@ -144,6 +145,20 @@ export function AuthPage({
                     minLength={3}
                     maxLength={32}
                     pattern="[a-zA-Z0-9_-]+"
+                  />
+                </label>
+                <label className="auth__field">
+                  <span>{t('auth.uid')}</span>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={uid}
+                    onChange={(e) => setUid(e.target.value)}
+                    required
+                    minLength={1}
+                    maxLength={64}
+                    pattern="[a-zA-Z0-9_-]+"
+                    placeholder={t('auth.uidPlaceholder')}
                   />
                 </label>
                 <label className="auth__field">

@@ -3,12 +3,14 @@ import * as api from '../../api/client'
 import type { Account } from '../../types'
 import { useI18n } from '../../i18n'
 import { BRAND_NAME } from '../../brand'
+import { collectionPath } from '../../lib/events'
 import { SettingsAccordion, SettingsDrawer } from './SettingsDrawer'
 
 type Props = {
   open: boolean
-  username: string
+  uid: string | null
   eventSlug: string
+  eventName: string
   onClose: () => void
   accounts: Account[]
   onAdd: () => void
@@ -24,8 +26,9 @@ type AccordionId = 'accounts' | 'share' | 'backup' | null
 
 export function CardTradesSettingsDrawer({
   open,
-  username,
+  uid,
   eventSlug,
+  eventName,
   onClose,
   accounts,
   onAdd,
@@ -43,7 +46,7 @@ export function CardTradesSettingsDrawer({
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [shareEnabled, setShareEnabled] = useState(false)
-  const [shareSlug, setShareSlug] = useState(username)
+  const [shareSlug, setShareSlug] = useState(uid ?? '')
   const [shareMsg, setShareMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -55,29 +58,35 @@ export function CardTradesSettingsDrawer({
     setPasteText('')
     setShareMsg('')
     setExpanded('accounts')
+    if (!uid) {
+      setShareEnabled(false)
+      setShareSlug('')
+      return
+    }
     void api.getEventShareSettings(eventSlug).then((share) => {
       setShareEnabled(share.enabled)
-      setShareSlug(share.slug)
+      setShareSlug(share.slug || uid)
     })
-  }, [open, accounts, username, eventSlug])
+  }, [open, accounts, uid, eventSlug])
 
   const toggle = (id: Exclude<AccordionId, null>) => {
     setExpanded((prev) => (prev === id ? null : id))
   }
 
-  const shareUrl = `${window.location.origin}/card-trades/${eventSlug}/collections/${shareSlug}`
+  const shareUrl = shareSlug
+    ? `${window.location.origin}${collectionPath(eventSlug, shareSlug)}`
+    : ''
 
   return (
     <SettingsDrawer
       open={open}
       onClose={onClose}
-      title={t('eventSettings.title')}
+      title={eventName}
       subtitle={BRAND_NAME}
     >
       <SettingsAccordion
         id="accounts"
         title={t('settings.accounts')}
-        hint={t('eventSettings.accountsHint')}
         open={expanded === 'accounts'}
         onToggle={() => toggle('accounts')}
       >
@@ -114,56 +123,60 @@ export function CardTradesSettingsDrawer({
       <SettingsAccordion
         id="share"
         title={t('share.settingsTitle')}
-        hint={t('eventSettings.shareHint')}
         open={expanded === 'share'}
         onToggle={() => toggle('share')}
       >
-        <label className="settings-share__toggle">
-          <input
-            type="checkbox"
-            checked={shareEnabled}
-            onChange={async () => {
-              try {
-                const share = await api.updateEventShareSettings(eventSlug, {
-                  enabled: !shareEnabled,
-                  slug: shareSlug,
-                })
-                setShareEnabled(share.enabled)
-                setShareSlug(share.slug)
-                setShareMsg(share.enabled ? t('share.enabledMsg') : t('share.disabledMsg'))
-              } catch {
-                setShareMsg(t('share.saveFail'))
-              }
-            }}
-          />
-          <span>{t('share.enablePublic')}</span>
-        </label>
-        {shareEnabled && (
-          <div className="settings-share__link">
-            <input className="input" readOnly value={shareUrl} />
-            <button
-              type="button"
-              className="btn btn--primary btn--sm"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(shareUrl)
-                  setShareMsg(t('share.linkCopied'))
-                } catch {
-                  setShareMsg(t('settings.msg.copyFail'))
-                }
-              }}
-            >
-              {t('share.copyLink')}
-            </button>
-          </div>
+        {!uid ? (
+          <p className="settings-feedback">{t('share.uidRequired')}</p>
+        ) : (
+          <>
+            <label className="settings-share__toggle">
+              <input
+                type="checkbox"
+                checked={shareEnabled}
+                onChange={async () => {
+                  try {
+                    const share = await api.updateEventShareSettings(eventSlug, {
+                      enabled: !shareEnabled,
+                      slug: uid,
+                    })
+                    setShareEnabled(share.enabled)
+                    setShareSlug(share.slug)
+                    setShareMsg(share.enabled ? t('share.enabledMsg') : t('share.disabledMsg'))
+                  } catch {
+                    setShareMsg(t('share.saveFail'))
+                  }
+                }}
+              />
+              <span>{t('share.enablePublic')}</span>
+            </label>
+            {shareEnabled && (
+              <div className="settings-share__link">
+                <input className="input" readOnly value={shareUrl} />
+                <button
+                  type="button"
+                  className="btn btn--primary btn--sm"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(shareUrl)
+                      setShareMsg(t('share.linkCopied'))
+                    } catch {
+                      setShareMsg(t('settings.msg.copyFail'))
+                    }
+                  }}
+                >
+                  {t('share.copyLink')}
+                </button>
+              </div>
+            )}
+            {shareMsg && <p className="settings-feedback">{shareMsg}</p>}
+          </>
         )}
-        {shareMsg && <p className="settings-feedback">{shareMsg}</p>}
       </SettingsAccordion>
 
       <SettingsAccordion
         id="backup"
         title={t('settings.backup')}
-        hint={t('eventSettings.backupHint')}
         open={expanded === 'backup'}
         onToggle={() => toggle('backup')}
       >

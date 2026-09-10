@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { I18nProvider } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
+import { SiteFooter } from '../components/SiteFooter'
 import { BRAND_NAME } from '../brand'
 import * as api from '../api/client'
 import '../App.css'
@@ -239,7 +240,7 @@ function HomeContent() {
               name: { ru: event.name, en: event.name },
               start: event.startDate,
               end: event.endDate,
-              path: `/card-trades/${event.slug}`,
+              path: `/${event.slug}`,
             })),
         )
       })
@@ -370,13 +371,7 @@ function HomeContent() {
           </p>
         </section>
 
-        <footer className="home-footer">
-          <p>
-            {isRu
-              ? 'Создано фанатом для фанатов'
-              : 'Made by a fan for fans'}
-          </p>
-        </footer>
+        <SiteFooter />
       </div>
     </I18nProvider>
   )

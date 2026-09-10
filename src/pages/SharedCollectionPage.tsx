@@ -6,6 +6,7 @@ import { CollectionView } from '../components/CollectionView'
 import { WishlistView } from '../components/WishlistView'
 import { useI18n } from '../i18n'
 import { BRAND_NAME } from '../brand'
+import { collectionNeededPath, collectionPath, collectionsListPath } from '../lib/events'
 import '../App.css'
 
 const SharedCollectionContext = createContext<{ collection: PublicCollection; event: CardTradeEvent } | null>(null)
@@ -22,6 +23,7 @@ export function SharedCollectionLayout() {
   const [payload, setPayload] = useState<{ collection: PublicCollection; event: CardTradeEvent } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [uidCopied, setUidCopied] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -58,7 +60,7 @@ export function SharedCollectionLayout() {
           <section className="panel">
             <p className="panel__error">{t('share.collectionNotFound')}</p>
             <div className="panel__actions">
-              <Link to={`/card-trades/${eventSlug}/collections`} className="btn btn--ghost btn--sm">
+              <Link to={collectionsListPath(eventSlug)} className="btn btn--ghost btn--sm">
                 {t('share.allCollections')}
               </Link>
               <Link to="/card-trades" className="btn btn--primary btn--sm">
@@ -72,6 +74,18 @@ export function SharedCollectionLayout() {
   }
 
   const { collection, event } = payload
+  const displayUid = collection.uid || collection.slug
+
+  const copyUid = async () => {
+    if (!displayUid) return
+    try {
+      await navigator.clipboard.writeText(displayUid)
+      setUidCopied(true)
+      window.setTimeout(() => setUidCopied(false), 1500)
+    } catch {
+      // ignore
+    }
+  }
 
   return (
     <SharedCollectionContext.Provider value={{ collection, event }}>
@@ -80,20 +94,33 @@ export function SharedCollectionLayout() {
 
         <header className="hero hero--compact">
           <p className="hero__brand">{BRAND_NAME}</p>
-          <h1 className="hero__title hero__title--name">{collection.username}</h1>
+          <div className="hero__name-row">
+            <h1 className="hero__title hero__title--name">{collection.username}</h1>
+            {displayUid && (
+              <button
+                type="button"
+                className={`hero__uid${uidCopied ? ' is-copied' : ''}`}
+                title={t('cozyFarm.copyUid')}
+                aria-label={t('cozyFarm.copyUid')}
+                onClick={() => void copyUid()}
+              >
+                {uidCopied ? t('common.copied') : displayUid}
+              </button>
+            )}
+          </div>
           <p className="hero__lead">{event.name}</p>
         </header>
 
         <nav className="tabs" aria-label={t('app.tabs')}>
           <NavLink
-            to={`/card-trades/${eventSlug}/collections/${slug}`}
+            to={collectionPath(eventSlug, slug)}
             end
             className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
           >
             {t('app.tab.collection')}
           </NavLink>
           <NavLink
-            to={`/card-trades/${eventSlug}/collections/${slug}/needed`}
+            to={collectionNeededPath(eventSlug, slug)}
             className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
           >
             {t('app.tab.wishlist')}

@@ -9,21 +9,23 @@ import { TradesView } from '../components/TradesView'
 import { TrendsView } from '../components/TrendsView'
 import { AppToolbar } from '../components/settings/AppToolbar'
 import { CardTradesSettingsDrawer } from '../components/settings/CardTradesSettingsDrawer'
+import { SiteFooter } from '../components/SiteFooter'
 import { I18nProvider, localeTag, normalizeLocale, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AuthOutletContext } from '../components/RequireAuth'
 import { DAILY_BONUS_TRADE_LIMIT, type Card, type TabId } from '../types'
 import type { CardTradeEvent, CardTradeEventTrends } from '../api/client'
 import * as api from '../api/client'
+import { collectionsListPath, eventPath, eventTabPath } from '../lib/events'
 import '../App.css'
 
 const SAVE_TOAST_MS = 3000
 
 function tabRoutes(eventSlug: string): { id: TabId; path: string }[] {
   return [
-    { id: 'collection', path: `/card-trades/${eventSlug}` },
-    { id: 'wishlist', path: `/card-trades/${eventSlug}/wishlist` },
-    { id: 'trades', path: `/card-trades/${eventSlug}/trades` },
-    { id: 'trends', path: `/card-trades/${eventSlug}/trends` },
+    { id: 'collection', path: eventPath(eventSlug) },
+    { id: 'wishlist', path: eventTabPath(eventSlug, 'wishlist') },
+    { id: 'trades', path: eventTabPath(eventSlug, 'trades') },
+    { id: 'trends', path: eventTabPath(eventSlug, 'trends') },
   ]
 }
 
@@ -34,7 +36,8 @@ function CardTradesShell({
   app: ReturnType<typeof useAppState>
   event: CardTradeEvent
 }) {
-  const { user, logout } = useOutletContext<AuthOutletContext>()
+  const { user, logout, setUid, uploadAvatar, accounts, switchAccount, removeAccount, addAccount } =
+    useOutletContext<AuthOutletContext>()
   const [eventSettingsOpen, setEventSettingsOpen] = useState(false)
   const [saveToast, setSaveToast] = useState<string | null>(null)
   const wasSavingRef = useRef(false)
@@ -86,13 +89,22 @@ function CardTradesShell({
 
       <AppToolbar
         username={user.username}
+        uid={user.uid}
+        avatarUrl={user.avatarUrl}
+        userId={user.id}
         permissions={user.permissions}
+        accounts={accounts}
         onLogout={logout}
+        onSetUid={setUid}
+        onUploadAvatar={uploadAvatar}
+        onSwitchAccount={switchAccount}
+        onRemoveAccount={removeAccount}
+        onAddAccount={addAccount}
         locale={locale}
         onLocaleChange={handleLocaleChange}
-        onEventSettings={() => setEventSettingsOpen(true)}
+        onPageSettings={() => setEventSettingsOpen(true)}
         showCollectionNav
-        collectionPath={`/card-trades/${event.slug}/collections`}
+        collectionPath={collectionsListPath(event.slug)}
       />
 
       {saveToast && (
@@ -103,7 +115,7 @@ function CardTradesShell({
 
       <CardTradesSettingsDrawer
         open={eventSettingsOpen}
-        username={user.username}
+        uid={user.uid}
         onClose={() => setEventSettingsOpen(false)}
         accounts={app.state.accounts}
         onAdd={() => app.addAccount()}
@@ -114,6 +126,7 @@ function CardTradesShell({
         onImport={app.importBackup}
         onImportText={app.importBackupText}
         eventSlug={event.slug}
+        eventName={event.name}
       />
 
       {app.loading ? (
@@ -191,7 +204,7 @@ function CardTradesShell({
             <Outlet context={{ app, user, event }} />
           </main>
 
-          <footer className="footer">{t('app.footer', { cards: totalCards })}</footer>
+          <SiteFooter />
         </>
       )}
     </div>
@@ -200,7 +213,7 @@ function CardTradesShell({
 
 export type CardTradesOutletContext = {
   app: ReturnType<typeof useAppState>
-  user: { id: string; username: string; permissions: string[] }
+  user: { id: string; username: string; uid: string | null; permissions: string[] }
   event: { slug: string; name: string; cards: Card[]; sets: CardSet[] }
 }
 

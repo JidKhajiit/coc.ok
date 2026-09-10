@@ -5,6 +5,7 @@ import type { PublicCollectionSummary } from '../api/client'
 import { PublicAppShell } from '../components/PublicAppShell'
 import { useI18n } from '../i18n'
 import { BRAND_NAME } from '../brand'
+import { collectionPath } from '../lib/events'
 import '../App.css'
 
 function SharedCollectionsList({ eventSlug }: { eventSlug: string }) {
@@ -53,8 +54,13 @@ function SharedCollectionsList({ eventSlug }: { eventSlug: string }) {
           <ul className="share-list">
             {collections.map((item) => (
               <li key={item.slug}>
-                <Link to={`/card-trades/${eventSlug}/collections/${item.slug}`} className="share-list__item">
-                  <strong>{item.username}</strong>
+                <Link to={collectionPath(eventSlug, item.slug)} className="share-list__item">
+                  <div className="share-list__identity">
+                    <strong>{item.username}</strong>
+                    {(item.uid || item.slug) && (
+                      <span className="share-list__uid">{item.uid || item.slug}</span>
+                    )}
+                  </div>
                   <span>
                     {t('share.collectionStats', {
                       owned: item.stats.uniqueOwned,

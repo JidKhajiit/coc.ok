@@ -11,8 +11,8 @@ import type { AppState } from '../../../shared/types.js'
 const slugSchema = z
   .string()
   .trim()
-  .min(3)
-  .max(32)
+  .min(1)
+  .max(64)
   .regex(/^[a-zA-Z0-9_-]+$/, 'Slug may only contain letters, numbers, _ and -')
 
 function publicPayload(
@@ -126,7 +126,7 @@ export function createShareRoutes(db: Db) {
     return c.json({
       share: {
         enabled: row?.shareEnabled ?? false,
-        slug: row?.shareSlug ?? user.username,
+        slug: row?.shareSlug ?? user.uid,
       },
     })
   })
@@ -134,6 +134,10 @@ export function createShareRoutes(db: Db) {
   app.put('/', async (c) => {
     const user = c.get('user')
     if (!user) return c.json({ error: 'Unauthorized' }, 401)
+    if (!user.uid) {
+      return c.json({ error: 'Set your game UID in site settings before sharing' }, 400)
+    }
+
     const body = await c.req.json().catch(() => null)
     const schema = z.object({
       enabled: z.boolean(),
@@ -144,7 +148,7 @@ export function createShareRoutes(db: Db) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
     }
 
-    const slug = parsed.data.slug?.trim() || user.username
+    const slug = user.uid
     const existing = await db
       .select({ userId: userStates.userId })
       .from(userStates)

@@ -19,6 +19,10 @@ import type { AppState } from '../../../shared/types.js'
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: text('username').notNull().unique(),
+  /** Game UID — primary public identity for shared collection URLs. Nullable for legacy accounts. */
+  uid: text('uid').unique(),
+  /** Public path to avatar image, e.g. `/uploads/avatars/{id}.jpg`. */
+  avatarUrl: text('avatar_url'),
   email: text('email').unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   passwordHash: text('password_hash').notNull(),
@@ -32,6 +36,22 @@ export const sessions = pgTable('sessions', {
     .references(() => users.id, { onDelete: 'cascade' }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 })
+
+/** Browser device ↔ multiple logged-in accounts (sessions stay httpOnly). */
+export const deviceAccounts = pgTable(
+  'device_accounts',
+  {
+    deviceId: text('device_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.deviceId, t.userId] })],
+)
 
 export const authTokens = pgTable('auth_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
