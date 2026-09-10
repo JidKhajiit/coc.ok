@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -19,7 +20,7 @@ import type { AppState } from '../../../shared/types.js'
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: text('username').notNull().unique(),
-  /** Game UID — primary public identity for shared collection URLs. Nullable for legacy accounts. */
+  /** Game UID — revealed to trade partners after a confirmed exchange. Nullable for legacy accounts. */
   uid: text('uid').unique(),
   /** Public path to avatar image, e.g. `/uploads/avatars/{id}.jpg`. */
   avatarUrl: text('avatar_url'),
@@ -72,6 +73,7 @@ export const userStates = pgTable('user_states', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   shareEnabled: boolean('share_enabled').notNull().default(false),
   shareSlug: text('share_slug').unique(),
+  acceptTradeOffers: boolean('accept_trade_offers').notNull().default(true),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,10 +183,37 @@ export const cardTradeUserStates = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     shareEnabled: boolean('share_enabled').notNull().default(false),
     shareSlug: text('share_slug'),
+    acceptTradeOffers: boolean('accept_trade_offers').notNull().default(true),
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.eventId] }),
     uniqueIndex('card_trade_user_states_event_share_slug_idx').on(t.eventId, t.shareSlug),
+  ],
+)
+
+export const cardTradeProposals = pgTable(
+  'card_trade_proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => cardTradeEvents.id, { onDelete: 'cascade' }),
+    fromUserId: uuid('from_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    toUserId: uuid('to_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // 'trade' | 'gift'
+    offeredCardKey: text('offered_card_key'),
+    requestedCardKey: text('requested_card_key').notNull(),
+    status: text('status').notNull().default('pending'), // pending | accepted | rejected | cancelled
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('card_trade_proposals_to_event_status_idx').on(t.toUserId, t.eventId, t.status),
+    index('card_trade_proposals_from_event_status_idx').on(t.fromUserId, t.eventId, t.status),
   ],
 )
 

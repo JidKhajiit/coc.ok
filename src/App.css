@@ -1165,6 +1165,14 @@ h4 {
   margin-bottom: 18px;
 }
 
+.hero--compact .hero__lead {
+  margin-bottom: 8px;
+}
+
+.hero--compact .hero__stats {
+  margin-top: 12px;
+}
+
 .hero--compact .hero__brand {
   font-size: 0.88rem;
   font-weight: var(--fw-semibold);
@@ -1280,6 +1288,36 @@ h4 {
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--tracking-tight);
   color: #fff8ea;
+}
+
+.stat__stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat__step {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(248, 242, 228, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8ea;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.stat__step:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stat__step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .stat span {
@@ -1435,6 +1473,14 @@ h4 {
 
 .panel__head p {
   margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  max-width: 52ch;
+}
+
+.panel__lead {
+  margin: 0 0 14px;
   color: var(--ink-soft);
   font-size: 0.95rem;
   line-height: 1.45;
@@ -4500,6 +4546,176 @@ h4 {
 
 .panel__status {
   color: var(--ink-soft);
+}
+
+.card-detail-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.card-detail__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(12, 18, 14, 0.55);
+  cursor: pointer;
+}
+
+.card-detail {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  background: var(--panel, #f7f3ea);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  animation: settings-drawer-in 0.22s ease;
+}
+
+.card-detail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-detail__head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.card-detail__close {
+  border: 0;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.card-detail__body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.card-detail__art {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 160px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+}
+
+.card-detail__art--blue {
+  background: linear-gradient(160deg, rgba(70, 120, 180, 0.18), rgba(70, 120, 180, 0.05));
+}
+
+.card-detail__art--gold {
+  background: linear-gradient(160deg, rgba(200, 150, 40, 0.22), rgba(200, 150, 40, 0.06));
+}
+
+.card-detail__art-num {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.card-detail__art-rarity {
+  letter-spacing: 0.08em;
+}
+
+.card-detail__art-hint {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.card-detail__eyebrow {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.card-detail__name {
+  margin: 4px 0 8px;
+  font-size: 1.25rem;
+}
+
+.card-detail__qty,
+.card-detail__needed,
+.card-detail__tier {
+  margin: 0;
+}
+
+.card-detail__trend-list {
+  margin: 8px 0 0;
+  padding-left: 1.1rem;
+}
+
+.card-detail__trends-empty,
+.card-detail__restricted {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.card-detail__action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-detail__propose {
+  display: grid;
+  gap: 10px;
+}
+
+.proposals-section {
+  margin-bottom: 20px;
+}
+
+.proposals-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.proposals-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.proposals-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.proposals-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proposals-item__uid {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 720px) {

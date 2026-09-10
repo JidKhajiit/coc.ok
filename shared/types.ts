@@ -32,10 +32,18 @@ export interface AppState {
   potentialTrades: PotentialTrade[]
   locale?: 'ru' | 'en'
   wishlist?: string[]
+  /** Remaining in-game trade initiations (manual tracker, daily cap 3). */
+  tradeAttemptsLeft?: number
 }
 
 export const DEFAULT_ACCOUNTS: Account[] = []
 export const SOLO_ACCOUNT_ID = 'solo'
+
+/** Daily trades that grant a bonus star. */
+export const DAILY_BONUS_TRADE_LIMIT = 20
+
+/** Daily trade initiations allowed in-game. */
+export const DAILY_TRADE_INITIATION_LIMIT = 3
 
 export const EMPTY_STATE: AppState = {
   owned: {},
@@ -44,4 +52,5 @@ export const EMPTY_STATE: AppState = {
   trades: [],
   potentialTrades: [],
   locale: 'ru',
+  tradeAttemptsLeft: DAILY_TRADE_INITIATION_LIMIT,
 }

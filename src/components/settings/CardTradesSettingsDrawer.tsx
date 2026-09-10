@@ -46,7 +46,8 @@ export function CardTradesSettingsDrawer({
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [shareEnabled, setShareEnabled] = useState(false)
-  const [shareSlug, setShareSlug] = useState(uid ?? '')
+  const [shareSlug, setShareSlug] = useState('')
+  const [acceptTradeOffers, setAcceptTradeOffers] = useState(true)
   const [shareMsg, setShareMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -61,11 +62,13 @@ export function CardTradesSettingsDrawer({
     if (!uid) {
       setShareEnabled(false)
       setShareSlug('')
+      setAcceptTradeOffers(true)
       return
     }
     void api.getEventShareSettings(eventSlug).then((share) => {
       setShareEnabled(share.enabled)
-      setShareSlug(share.slug || uid)
+      setShareSlug(share.slug)
+      setAcceptTradeOffers(share.acceptTradeOffers)
     })
   }, [open, accounts, uid, eventSlug])
 
@@ -138,10 +141,11 @@ export function CardTradesSettingsDrawer({
                   try {
                     const share = await api.updateEventShareSettings(eventSlug, {
                       enabled: !shareEnabled,
-                      slug: uid,
+                      acceptTradeOffers,
                     })
                     setShareEnabled(share.enabled)
                     setShareSlug(share.slug)
+                    setAcceptTradeOffers(share.acceptTradeOffers)
                     setShareMsg(share.enabled ? t('share.enabledMsg') : t('share.disabledMsg'))
                   } catch {
                     setShareMsg(t('share.saveFail'))
@@ -149,6 +153,27 @@ export function CardTradesSettingsDrawer({
                 }}
               />
               <span>{t('share.enablePublic')}</span>
+            </label>
+            <label className="settings-share__toggle">
+              <input
+                type="checkbox"
+                checked={acceptTradeOffers}
+                onChange={async () => {
+                  try {
+                    const share = await api.updateEventShareSettings(eventSlug, {
+                      enabled: shareEnabled,
+                      acceptTradeOffers: !acceptTradeOffers,
+                    })
+                    setShareEnabled(share.enabled)
+                    setShareSlug(share.slug)
+                    setAcceptTradeOffers(share.acceptTradeOffers)
+                    setShareMsg(t('share.acceptOffersSaved'))
+                  } catch {
+                    setShareMsg(t('share.saveFail'))
+                  }
+                }}
+              />
+              <span>{t('share.acceptOffers')}</span>
             </label>
             {shareEnabled && (
               <div className="settings-share__link">

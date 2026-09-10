@@ -6,7 +6,6 @@ import { getCookie } from 'hono/cookie'
 import type { Db } from '../db/index.js'
 import {
   authTokens,
-  cardTradeUserStates,
   userStates,
   users,
   userRoles,
@@ -134,17 +133,6 @@ async function consumeAuthToken(db: Db, token: string, type: 'email_verify' | 'p
 
   await db.delete(authTokens).where(eq(authTokens.id, row.id))
   return row.userId
-}
-
-async function syncShareSlugsToUid(db: Db, userId: string, uid: string) {
-  await db
-    .update(userStates)
-    .set({ shareSlug: uid, updatedAt: new Date() })
-    .where(eq(userStates.userId, userId))
-  await db
-    .update(cardTradeUserStates)
-    .set({ shareSlug: uid, updatedAt: new Date() })
-    .where(eq(cardTradeUserStates.userId, userId))
 }
 
 export function createAuthRoutes(db: Db, env: Env) {
@@ -500,13 +488,6 @@ export function createAuthRoutes(db: Db, env: Env) {
 
     if (!updated?.uid) {
       return c.json({ error: 'UID is already set' }, 409)
-    }
-
-    try {
-      await syncShareSlugsToUid(db, user.id, uid)
-    } catch (err) {
-      console.error('Failed to sync share slugs to uid:', err)
-      // UID is saved; share links can be refreshed on next share toggle.
     }
 
     return c.json({

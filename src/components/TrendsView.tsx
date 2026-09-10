@@ -54,16 +54,11 @@ export function TrendsView({ cards, owned, mostGiven, mostRequested, tradeCount 
   const { t } = useI18n()
   return (
     <section className="panel">
-      <header className="panel__head">
-        <div>
-          <h2>{t('trends.title')}</h2>
-          <p>
-            {t('trends.lead', {
-              count: tradeCount > 0 ? t('trends.leadCount', { n: tradeCount }) : '',
-            })}
-          </p>
-        </div>
-      </header>
+      <p className="panel__lead">
+        {t('trends.lead', {
+          count: tradeCount > 0 ? t('trends.leadCount', { n: tradeCount }) : '',
+        })}
+      </p>
 
       <div className="trend-grid">
         <TrendList

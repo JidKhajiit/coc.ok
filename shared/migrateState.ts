@@ -1,11 +1,18 @@
 import type { Account, AppState, TradeRecord, TradeSource } from './types.js'
-import { DEFAULT_ACCOUNTS, SOLO_ACCOUNT_ID } from './types.js'
+import { DAILY_TRADE_INITIATION_LIMIT, DEFAULT_ACCOUNTS, SOLO_ACCOUNT_ID } from './types.js'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
 const MAX_CARD_NUMBER = 135
 
 function normalizeLocale(value: unknown): 'ru' | 'en' {
   return value === 'en' ? 'en' : 'ru'
+}
+
+function normalizeTradeAttemptsLeft(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(DAILY_TRADE_INITIATION_LIMIT, Math.floor(value)))
+  }
+  return DAILY_TRADE_INITIATION_LIMIT
 }
 
 function normalizeTradeSource(source: unknown): TradeSource {
@@ -109,6 +116,7 @@ export function migrateState(parsed: Partial<AppState> & { wishlist?: string[] }
     trades: migrateTrades(parsed.trades),
     potentialTrades: migrateTradeLike(parsed.potentialTrades),
     locale: normalizeLocale(parsed.locale),
+    tradeAttemptsLeft: normalizeTradeAttemptsLeft(parsed.tradeAttemptsLeft),
   }
 }
 
