@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import { BRAND_NAME } from '../brand'
 import { AuthMessage, PasswordField } from './PasswordField'
+import { isPasswordStrong } from '../../shared/passwordPolicy'
 
 type Mode = 'login' | 'register' | 'forgot' | 'verify-sent'
 
@@ -33,6 +35,7 @@ export function AuthPage({
   const [uid, setUid] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [pendingEmail, setPendingEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -44,6 +47,10 @@ export function AuthPage({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (mode === 'register') {
+      if (!acceptedTerms) return
+      if (!isPasswordStrong(password)) return
+    }
     setSubmitting(true)
     try {
       if (mode === 'login') {
@@ -54,6 +61,7 @@ export function AuthPage({
         setPendingEmail(normalizedEmail)
         setMode('verify-sent')
         setPassword('')
+        setAcceptedTerms(false)
       } else if (mode === 'forgot') {
         await onForgotPassword(email.trim())
       }
@@ -147,6 +155,7 @@ export function AuthPage({
                     pattern="[a-zA-Z0-9_-]+"
                   />
                 </label>
+                <p className="auth__notice">{t('auth.usernamePrivacy')}</p>
                 <label className="auth__field">
                   <span>{t('auth.uid')}</span>
                   <input
@@ -195,7 +204,25 @@ export function AuthPage({
                 value={password}
                 onChange={setPassword}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                enforcePolicy={mode === 'register'}
               />
+            )}
+
+            {mode === 'register' && (
+              <label className="auth__checkbox">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  required
+                />
+                <span>
+                  {t('auth.acceptTermsPrefix')}{' '}
+                  <Link to="/terms" className="auth__link" target="_blank" rel="noopener noreferrer">
+                    {t('legal.termsLink')}
+                  </Link>
+                </span>
+              </label>
             )}
 
             {mode === 'login' && (
@@ -208,7 +235,11 @@ export function AuthPage({
 
             <AuthMessage error={error} info={info} />
 
-            <button type="submit" className="auth__submit" disabled={submitting}>
+            <button
+              type="submit"
+              className="auth__submit"
+              disabled={submitting || (mode === 'register' && !acceptedTerms)}
+            >
               {submitting
                 ? t('auth.submitting')
                 : mode === 'login'

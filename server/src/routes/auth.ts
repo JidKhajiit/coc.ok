@@ -37,6 +37,11 @@ import { createRateLimit } from '../middleware/rateLimit.js'
 import { requireAuth } from '../middleware/auth.js'
 import { EMPTY_STATE } from '../../../shared/types.js'
 import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  isPasswordStrong,
+} from '../../../shared/passwordPolicy.js'
+import {
   AVATAR_MAX_BYTES,
   isAllowedAvatarMime,
   saveAvatarFile,
@@ -59,13 +64,23 @@ export const uidSchema = z
 
 const emailSchema = z.string().trim().email('Invalid email address').max(254)
 
-const passwordSchema = z.string().min(8, 'Password must be at least 8 characters').max(128)
+/** Login accepts existing passwords (length only). */
+const passwordSchema = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
+  .max(PASSWORD_MAX_LENGTH)
+
+/** Register / reset require letters, digits, and special characters. */
+const strongPasswordSchema = passwordSchema.refine(isPasswordStrong, {
+  message:
+    'Password must include letters, digits, and a special character (!@#$%^&*()_+-=[]{}|;:,.<>?)',
+})
 
 const registerSchema = z.object({
   username: usernameSchema,
   uid: uidSchema,
   email: emailSchema,
-  password: passwordSchema,
+  password: strongPasswordSchema,
 })
 
 const setUidSchema = z.object({
@@ -83,7 +98,7 @@ const forgotSchema = z.object({
 
 const resetSchema = z.object({
   token: z.string().min(1),
-  password: passwordSchema,
+  password: strongPasswordSchema,
 })
 
 const verifySchema = z.object({

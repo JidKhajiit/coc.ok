@@ -2826,9 +2826,126 @@ h4 {
   margin: 0;
 }
 
+.site-footer__links {
+  margin-top: 0.45rem !important;
+}
+
+.site-footer__links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.site-footer__links a:hover {
+  color: var(--ink);
+}
+
 .app--home .site-footer {
   color: rgba(248, 244, 234, 0.5);
   padding: 32px 20px;
+}
+
+.app--home .site-footer__links a:hover {
+  color: rgba(248, 244, 234, 0.85);
+}
+
+.cookie-banner {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 80;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  max-width: 42rem;
+  margin-inline: auto;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(247, 242, 230, 0.98);
+  color: var(--ink);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.cookie-banner__text {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.cookie-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+
+.cookie-banner__link {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cookie-banner__link:hover {
+  color: var(--ink);
+}
+
+.legal-page {
+  position: relative;
+  min-height: calc(100vh - 120px);
+  display: grid;
+  place-items: start center;
+  padding: 88px 16px 48px;
+}
+
+.legal-page__card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 40rem);
+  padding: 1.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(247, 242, 230, 0.94);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+}
+
+.legal-page__brand {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.legal-page__title {
+  margin: 0 0 1rem;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.legal-page__body {
+  display: grid;
+  gap: 0.85rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.legal-page__body p {
+  margin: 0;
+}
+
+.legal-page__nav {
+  margin: 1.25rem 0 0;
 }
 
 .footer {
@@ -2924,6 +3041,10 @@ h4 {
   color: var(--ink-soft);
 }
 
+.auth__field-label {
+  display: block;
+}
+
 .auth__field input {
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--line);
@@ -2943,15 +3064,42 @@ h4 {
   padding-right: 2.75rem;
 }
 
+.auth__password-wrap--with-actions input {
+  padding-right: 7.5rem;
+}
+
 .auth__password--spoiled {
   -webkit-text-security: disc;
   font-family: var(--font-family);
   letter-spacing: 0.12em;
 }
 
-.auth__password-toggle {
+.auth__password-actions {
   position: absolute;
-  right: 0.35rem;
+  right: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.auth__password-generate {
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.auth__password-generate:hover {
+  background: rgba(26, 42, 34, 0.06);
+}
+
+.auth__password-toggle {
   display: grid;
   place-items: center;
   width: 2.25rem;
@@ -2967,6 +3115,43 @@ h4 {
 .auth__password-toggle:hover {
   color: var(--ink);
   background: rgba(26, 42, 34, 0.06);
+}
+
+.auth__password-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.auth__password-hint-status {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.auth__notice {
+  margin: -0.35rem 0 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(26, 42, 34, 0.05);
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.auth__checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.auth__checkbox input {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
 }
 
 .auth__error {
