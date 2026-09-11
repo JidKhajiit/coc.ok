@@ -304,6 +304,10 @@ const ru: Dict = {
   'auth.saving': 'Сохранение…',
   'auth.saved': 'Сохранено',
   'auth.saveError': 'Ошибка сохранения',
+  'auth.pendingSync': 'Сохранено на устройстве — ждём сеть',
+  'auth.conflict': 'На сервере есть более новая версия коллекции',
+  'auth.conflictKeepLocal': 'Оставить мою',
+  'auth.conflictTakeServer': 'Взять с сервера',
 
   'share.settingsTitle': 'Публичность',
   'share.settingsHint': 'Другие игроки смогут смотреть вашу коллекцию и список «Ищу» по ссылке.',
@@ -734,6 +738,10 @@ const en: Dict = {
   'auth.saving': 'Saving…',
   'auth.saved': 'Saved',
   'auth.saveError': 'Save failed',
+  'auth.pendingSync': 'Saved on device — waiting for network',
+  'auth.conflict': 'A newer collection version exists on the server',
+  'auth.conflictKeepLocal': 'Keep mine',
+  'auth.conflictTakeServer': 'Use server',
 
   'share.settingsTitle': 'Publicity',
   'share.settingsHint': 'Other players can view your collection and Looking for list via a link.',

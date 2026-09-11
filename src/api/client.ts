@@ -102,11 +102,31 @@ export type CardTradeEventTrends = {
 
 export class ApiError extends Error {
   status: number
+  body: unknown
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.body = body
+  }
+}
+
+export type EventStatePayload = {
+  data: AppState
+  updatedAt: string | null
+}
+
+export function getConflictPayload(err: unknown): EventStatePayload | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null
+  const body = err.body
+  if (!body || typeof body !== 'object') return null
+  const data = 'data' in body ? body.data : null
+  const updatedAt = 'updatedAt' in body ? body.updatedAt : null
+  if (!data || typeof data !== 'object') return null
+  return {
+    data: data as AppState,
+    updatedAt: typeof updatedAt === 'string' ? updatedAt : null,
   }
 }
 
@@ -188,7 +208,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
     const message = typeof body.error === 'string' ? body.error : `Request failed (${res.status})`
-    throw new ApiError(message, res.status)
+    throw new ApiError(message, res.status, body)
   }
   return body as T
 }
@@ -346,22 +366,21 @@ export async function getCardTradeEvent(eventSlug: string): Promise<CardTradeEve
   return event
 }
 
-export async function getEventState(eventSlug: string): Promise<AppState> {
-  const { data } = await request<{ data: AppState }>(
+export async function getEventState(eventSlug: string): Promise<EventStatePayload> {
+  return request<EventStatePayload>(
     `/api/card-trades/${encodeURIComponent(eventSlug)}/state`,
   )
-  return data
 }
 
-export async function putEventState(eventSlug: string, state: AppState): Promise<AppState> {
-  const { data } = await request<{ data: AppState }>(
-    `/api/card-trades/${encodeURIComponent(eventSlug)}/state`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(state),
-    },
-  )
-  return data
+export async function putEventState(
+  eventSlug: string,
+  state: AppState,
+  baseUpdatedAt: string | null,
+): Promise<EventStatePayload> {
+  return request<EventStatePayload>(`/api/card-trades/${encodeURIComponent(eventSlug)}/state`, {
+    method: 'PUT',
+    body: JSON.stringify({ data: state, baseUpdatedAt }),
+  })
 }
 
 export async function getEventTrends(eventSlug: string): Promise<CardTradeEventTrends> {

@@ -269,7 +269,7 @@ async function upsertEventState(
   userId: string,
   state: AppState,
   share?: ShareFields,
-) {
+): Promise<Date> {
   const now = new Date()
   await db
     .insert(cardTradeUserStates)
@@ -327,6 +327,8 @@ async function upsertEventState(
         },
       })
   }
+
+  return now
 }
 
 async function updateShareOnly(
@@ -734,7 +736,10 @@ export function createCardTradesRoutes(db: Db) {
 
     const user = c.get('user')!
     const row = await loadEventState(db, event, user.id)
-    return c.json({ data: migrateState((row?.data ?? EMPTY_STATE) as AppState) })
+    return c.json({
+      data: migrateState((row?.data ?? EMPTY_STATE) as AppState),
+      updatedAt: row?.updatedAt.toISOString() ?? null,
+    })
   })
 
   app.put('/:eventSlug/state', async (c) => {
@@ -750,20 +755,53 @@ export function createCardTradesRoutes(db: Db) {
     } catch {
       body = null
     }
-    const parsed = appStateSchema.safeParse(body)
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid state' }, 400)
+
+    const wrappedSchema = z.object({
+      data: appStateSchema,
+      baseUpdatedAt: z.string().max(64).nullable(),
+    })
+    const wrapped = wrappedSchema.safeParse(body)
+    const legacy = wrapped.success ? null : appStateSchema.safeParse(body)
+    if (!wrapped.success && !legacy?.success) {
+      return c.json(
+        {
+          error:
+            wrapped.error.issues[0]?.message ??
+            legacy?.error.issues[0]?.message ??
+            'Invalid state',
+        },
+        400,
+      )
     }
+
+    const concurrencyChecked = wrapped.success
+    const stateInput = wrapped.success ? wrapped.data.data : legacy!.data
+    const baseUpdatedAt = wrapped.success ? wrapped.data.baseUpdatedAt : null
 
     const user = c.get('user')!
     const current = await loadEventState(db, event, user.id)
-    const migrated = migrateState(parsed.data as AppState)
-    await upsertEventState(db, event, user.id, migrated, {
+
+    if (concurrencyChecked && current) {
+      const serverUpdatedAt = current.updatedAt.toISOString()
+      if (baseUpdatedAt !== serverUpdatedAt) {
+        return c.json(
+          {
+            error: 'Conflict',
+            data: migrateState((current.data ?? EMPTY_STATE) as AppState),
+            updatedAt: serverUpdatedAt,
+          },
+          409,
+        )
+      }
+    }
+
+    const migrated = migrateState(stateInput as AppState)
+    const updatedAt = await upsertEventState(db, event, user.id, migrated, {
       enabled: current?.shareEnabled ?? false,
       slug: current?.shareSlug ?? null,
       acceptTradeOffers: current?.acceptTradeOffers ?? true,
     })
-    return c.json({ data: migrated })
+    return c.json({ data: migrated, updatedAt: updatedAt.toISOString() })
   })
 
   app.use('/:eventSlug/share', requireAuth)

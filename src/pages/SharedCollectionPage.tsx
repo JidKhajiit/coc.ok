@@ -186,8 +186,8 @@ export function SharedCollectionCollectionTab() {
     let cancelled = false
     void api
       .getEventState(eventSlug)
-      .then((data) => {
-        if (!cancelled) setMyOwned(data.owned)
+      .then((payload) => {
+        if (!cancelled) setMyOwned(payload.data.owned)
       })
       .catch(() => {
         if (!cancelled) setMyOwned({})
@@ -248,8 +248,8 @@ export function SharedCollectionNeededTab() {
     let cancelled = false
     void api
       .getEventState(eventSlug)
-      .then((data) => {
-        if (!cancelled) setMyOwned(data.owned)
+      .then((payload) => {
+        if (!cancelled) setMyOwned(payload.data.owned)
       })
       .catch(() => {
         if (!cancelled) setMyOwned({})

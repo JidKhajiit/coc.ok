@@ -3128,6 +3128,34 @@ h4 {
   pointer-events: none;
 }
 
+.sync-conflict {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem 0.75rem;
+  max-width: min(92vw, 32rem);
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(247, 242, 230, 0.98);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  animation: toast-in 0.2s ease;
+}
+
+.sync-conflict__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;

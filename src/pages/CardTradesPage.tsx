@@ -54,6 +54,12 @@ function CardTradesShell({
   }
 
   useEffect(() => {
+    if (app.conflict) {
+      wasSavingRef.current = false
+      setSaveToast(null)
+      return
+    }
+
     if (app.saving) {
       wasSavingRef.current = true
       setSaveToast(t('auth.saving'))
@@ -62,7 +68,13 @@ function CardTradesShell({
 
     if (app.saveError) {
       wasSavingRef.current = false
-      setSaveToast(t('auth.saveError'))
+      setSaveToast(app.pendingSync ? t('auth.pendingSync') : t('auth.saveError'))
+      return
+    }
+
+    if (app.pendingSync && typeof navigator !== 'undefined' && !navigator.onLine) {
+      wasSavingRef.current = false
+      setSaveToast(t('auth.pendingSync'))
       return
     }
 
@@ -72,7 +84,7 @@ function CardTradesShell({
       const timer = setTimeout(() => setSaveToast(null), SAVE_TOAST_MS)
       return () => clearTimeout(timer)
     }
-  }, [app.saving, app.saveError, app.lastSaved, t])
+  }, [app.saving, app.saveError, app.lastSaved, app.pendingSync, app.conflict, t])
 
   const tradesToday = app.stats.tradesToday
   const totalCards = event.cards.length
@@ -112,10 +124,28 @@ function CardTradesShell({
         collectionPath={collectionsListPath(event.slug)}
       />
 
-      {saveToast && (
-        <div className="save-toast" role="status" aria-live="polite">
-          {saveToast}
+      {app.conflict ? (
+        <div className="sync-conflict" role="alert">
+          <span>{t('auth.conflict')}</span>
+          <div className="sync-conflict__actions">
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => void app.keepLocalChanges()}>
+              {t('auth.conflictKeepLocal')}
+            </button>
+            <button
+              type="button"
+              className="btn btn--outline btn--sm"
+              onClick={() => void app.discardLocalChanges()}
+            >
+              {t('auth.conflictTakeServer')}
+            </button>
+          </div>
         </div>
+      ) : (
+        saveToast && (
+          <div className="save-toast" role="status" aria-live="polite">
+            {saveToast}
+          </div>
+        )
       )}
 
       <CardTradesSettingsDrawer
@@ -402,10 +432,11 @@ export function CardTradesTrendsTab() {
 
 export function CardTradesPage() {
   const { eventSlug = '' } = useParams()
+  const { user } = useOutletContext<AuthOutletContext>()
   const [event, setEvent] = useState<CardTradeEvent | null>(null)
   const [eventError, setEventError] = useState<string | null>(null)
   const [eventLoading, setEventLoading] = useState(true)
-  const app = useAppState(eventSlug, event?.cards ?? [])
+  const app = useAppState(eventSlug, event?.cards ?? [], user.id)
   const locale = normalizeLocale(app.state.locale)
 
   const setLocale = useCallback(
