@@ -821,6 +821,15 @@ h4 {
   font-size: 0.9rem;
 }
 
+/* .input has flex:1 for horizontal toolbars — don't stretch height in stacked fields */
+.settings-add-account__field .input,
+.settings-profiles__create .input,
+.settings-profiles__claim .input,
+.settings-profiles__admin-add .input {
+  flex: none;
+  width: 100%;
+}
+
 .settings-add-account__actions {
   display: flex;
   flex-wrap: wrap;
@@ -1055,6 +1064,139 @@ h4 {
   font-weight: 700;
   color: var(--muted);
   text-align: center;
+}
+
+.settings-profiles {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-profiles__empty {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(36, 63, 50, 0.06);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.settings-profiles__row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(36, 63, 50, 0.05);
+}
+
+.settings-profiles__row.is-active {
+  outline: 1px solid rgba(36, 63, 50, 0.2);
+}
+
+.settings-profiles__main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-profiles__main .input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.settings-profiles__uid {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.settings-profiles__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-profiles__create,
+.settings-profiles__claim,
+.settings-profiles__admins {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.settings-profiles__admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-profiles__admin-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-profiles__admin-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  text-align: center;
+}
+
+.cozy-table__profile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.admin-claims__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-claims__item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(36, 63, 50, 0.06);
+}
+
+.admin-claims__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-claims__actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
 }
 
 .settings-backup__actions {

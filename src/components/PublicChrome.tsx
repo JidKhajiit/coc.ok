@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useProfiles } from '../hooks/useProfiles'
 import { useI18n, type Locale } from '../i18n'
 import { BRAND_NAME } from '../brand'
 import { SiteSettingsDrawer } from './settings/SiteSettingsDrawer'
@@ -25,6 +26,7 @@ export function PublicChrome({
   const { t } = useI18n()
   const location = useLocation()
   const auth = useAuth()
+  const profiles = useProfiles(auth.status === 'authenticated')
   const [siteOpen, setSiteOpen] = useState(false)
 
   const onLoginPage = location.pathname === '/card-trades' && auth.status === 'unauthenticated'
@@ -102,17 +104,17 @@ export function PublicChrome({
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={auth.user?.username}
-        uid={auth.user?.uid}
         avatarUrl={auth.user?.avatarUrl}
         userId={auth.user?.id}
         permissions={auth.user?.permissions}
         accounts={auth.accounts}
+        profiles={auth.user ? profiles : undefined}
         onLogout={auth.user ? auth.logout : undefined}
-        onSetUid={auth.user ? auth.setUid : undefined}
         onUploadAvatar={auth.user ? auth.uploadAvatar : undefined}
         onSwitchAccount={auth.user ? auth.switchAccount : undefined}
         onRemoveAccount={auth.user ? auth.removeAccount : undefined}
         onAddAccount={auth.user ? auth.login : undefined}
+        onActiveProfileChange={auth.user ? auth.patchActiveProfileId : undefined}
         locale={locale}
         onLocaleChange={onLocaleChange}
       />

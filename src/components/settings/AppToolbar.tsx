@@ -5,20 +5,21 @@ import { BRAND_NAME } from '../../brand'
 import { SiteSettingsDrawer } from './SiteSettingsDrawer'
 import { UserAvatar } from '../UserAvatar'
 import type { DeviceAccount } from '../../api/client'
+import type { useProfiles } from '../../hooks/useProfiles'
 
 type Props = {
   username?: string
-  uid?: string | null
   avatarUrl?: string | null
   userId?: string
   permissions?: string[]
   accounts?: DeviceAccount[]
+  profiles?: ReturnType<typeof useProfiles>
   onLogout?: () => Promise<unknown>
-  onSetUid?: (uid: string) => Promise<unknown>
   onUploadAvatar?: (file: File) => Promise<unknown>
   onSwitchAccount?: (userId: string) => Promise<unknown>
   onRemoveAccount?: (userId: string) => Promise<unknown>
   onAddAccount?: (login: string, password: string) => Promise<unknown>
+  onActiveProfileChange?: (activeProfileId: string | null) => void
   locale: Locale
   onLocaleChange: (locale: Locale) => void
   /** Page-specific settings (event drawer, etc.). Gear is always shown. */
@@ -32,17 +33,17 @@ type Props = {
 
 export function AppToolbar({
   username,
-  uid = null,
   avatarUrl = null,
   userId,
   permissions,
   accounts,
+  profiles,
   onLogout,
-  onSetUid,
   onUploadAvatar,
   onSwitchAccount,
   onRemoveAccount,
   onAddAccount,
+  onActiveProfileChange,
   locale,
   onLocaleChange,
   onPageSettings,
@@ -115,17 +116,17 @@ export function AppToolbar({
         open={siteOpen}
         onClose={() => setSiteOpen(false)}
         username={username}
-        uid={uid}
         avatarUrl={avatarUrl}
         userId={userId}
         permissions={permissions}
         accounts={accounts}
+        profiles={profiles}
         onLogout={onLogout}
-        onSetUid={onSetUid}
         onUploadAvatar={onUploadAvatar}
         onSwitchAccount={onSwitchAccount}
         onRemoveAccount={onRemoveAccount}
         onAddAccount={onAddAccount}
+        onActiveProfileChange={onActiveProfileChange}
         locale={locale}
         onLocaleChange={onLocaleChange}
       />

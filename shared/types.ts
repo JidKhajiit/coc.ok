@@ -1,9 +1,12 @@
 export type TradeSource = 'completed' | 'observed' | 'cancelled'
 
-export interface Account {
+export interface FavoriteFolder {
   id: string
   name: string
 }
+
+/** @deprecated Use FavoriteFolder */
+export type Account = FavoriteFolder
 
 export interface TradeRecord {
   id: string
@@ -27,7 +30,7 @@ export interface PotentialTrade {
 export interface AppState {
   owned: Record<string, number>
   neededBy: Record<string, string[]>
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   trades: TradeRecord[]
   potentialTrades: PotentialTrade[]
   locale?: 'ru' | 'en'
@@ -36,8 +39,13 @@ export interface AppState {
   tradeAttemptsLeft?: number
 }
 
-export const DEFAULT_ACCOUNTS: Account[] = []
-export const SOLO_ACCOUNT_ID = 'solo'
+export const DEFAULT_FAVORITE_FOLDERS: FavoriteFolder[] = []
+export const SOLO_FOLDER_ID = 'solo'
+
+/** @deprecated Use DEFAULT_FAVORITE_FOLDERS */
+export const DEFAULT_ACCOUNTS = DEFAULT_FAVORITE_FOLDERS
+/** @deprecated Use SOLO_FOLDER_ID */
+export const SOLO_ACCOUNT_ID = SOLO_FOLDER_ID
 
 /** Daily trades that grant a bonus star. */
 export const DAILY_BONUS_TRADE_LIMIT = 20
@@ -48,7 +56,7 @@ export const DAILY_TRADE_INITIATION_LIMIT = 3
 export const EMPTY_STATE: AppState = {
   owned: {},
   neededBy: {},
-  accounts: DEFAULT_ACCOUNTS,
+  favoriteFolders: DEFAULT_FAVORITE_FOLDERS,
   trades: [],
   potentialTrades: [],
   locale: 'ru',

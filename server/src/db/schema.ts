@@ -20,8 +20,8 @@ import type { AppState } from '../../../shared/types.js'
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: text('username').notNull().unique(),
-  /** Game UID — revealed to trade partners after a confirmed exchange. Nullable for legacy accounts. */
-  uid: text('uid').unique(),
+  /** Currently selected game profile for this site account. */
+  activeProfileId: uuid('active_profile_id'),
   /** Public path to avatar image, e.g. `/uploads/avatars/{id}.jpg`. */
   avatarUrl: text('avatar_url'),
   email: text('email').unique(),
@@ -65,15 +65,68 @@ export const authTokens = pgTable('auth_tokens', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-export const userStates = pgTable('user_states', {
-  userId: uuid('user_id')
-    .primaryKey()
+// ─────────────────────────────────────────────────────────────────────────────
+// Game profiles (UID + nickname; owner + admins)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const profiles = pgTable('profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gameUid: text('game_uid').notNull().unique(),
+  nickname: text('nickname').notNull(),
+  ownerUserId: uuid('owner_user_id')
+    .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const profileMembers = pgTable(
+  'profile_members',
+  {
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(), // 'owner' | 'admin'
+  },
+  (t) => [
+    primaryKey({ columns: [t.profileId, t.userId] }),
+    index('profile_members_user_id_idx').on(t.userId),
+  ],
+)
+
+export const profileClaims = pgTable('profile_claims', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  profileId: uuid('profile_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  claimantUserId: uuid('claimant_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  screenshotPath: text('screenshot_path').notNull(),
+  message: text('message'),
+  status: text('status').notNull().default('pending'), // pending | approved | rejected
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedByUserId: uuid('resolved_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+})
+
+/** Legacy summer-party state keyed by profile. */
+export const profileStates = pgTable('profile_states', {
+  profileId: uuid('profile_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
   data: jsonb('data').$type<AppState>().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   shareEnabled: boolean('share_enabled').notNull().default(false),
   shareSlug: text('share_slug').unique(),
   acceptTradeOffers: boolean('accept_trade_offers').notNull().default(true),
+  updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,12 +223,12 @@ export const cardTradeCards = pgTable(
   ],
 )
 
-export const cardTradeUserStates = pgTable(
-  'card_trade_user_states',
+export const cardTradeProfileStates = pgTable(
+  'card_trade_profile_states',
   {
-    userId: uuid('user_id')
+    profileId: uuid('profile_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     eventId: uuid('event_id')
       .notNull()
       .references(() => cardTradeEvents.id, { onDelete: 'cascade' }),
@@ -184,10 +237,13 @@ export const cardTradeUserStates = pgTable(
     shareEnabled: boolean('share_enabled').notNull().default(false),
     shareSlug: text('share_slug'),
     acceptTradeOffers: boolean('accept_trade_offers').notNull().default(true),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
   (t) => [
-    primaryKey({ columns: [t.userId, t.eventId] }),
-    uniqueIndex('card_trade_user_states_event_share_slug_idx').on(t.eventId, t.shareSlug),
+    primaryKey({ columns: [t.profileId, t.eventId] }),
+    uniqueIndex('card_trade_profile_states_event_share_slug_idx').on(t.eventId, t.shareSlug),
   ],
 )
 
@@ -198,9 +254,17 @@ export const cardTradeProposals = pgTable(
     eventId: uuid('event_id')
       .notNull()
       .references(() => cardTradeEvents.id, { onDelete: 'cascade' }),
+    fromProfileId: uuid('from_profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    toProfileId: uuid('to_profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    /** Site user who created the proposal (audit). */
     fromUserId: uuid('from_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** Site user who owns/admins the target profile at create time (audit). */
     toUserId: uuid('to_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -212,8 +276,16 @@ export const cardTradeProposals = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    index('card_trade_proposals_to_event_status_idx').on(t.toUserId, t.eventId, t.status),
-    index('card_trade_proposals_from_event_status_idx').on(t.fromUserId, t.eventId, t.status),
+    index('card_trade_proposals_to_profile_event_status_idx').on(
+      t.toProfileId,
+      t.eventId,
+      t.status,
+    ),
+    index('card_trade_proposals_from_profile_event_status_idx').on(
+      t.fromProfileId,
+      t.eventId,
+      t.status,
+    ),
   ],
 )
 
@@ -223,9 +295,9 @@ export const cardTradeProposals = pgTable(
 
 export const cozyFarmListings = pgTable('cozy_farm_listings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
+  profileId: uuid('profile_id')
     .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+    .references(() => profiles.id, { onDelete: 'cascade' }),
   gameUid: text('game_uid').notNull(),
   bonusDragonfruit: real('bonus_dragonfruit'),
   bonusCarrot: real('bonus_carrot'),

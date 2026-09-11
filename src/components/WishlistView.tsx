@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import type { Account, Card } from '../types'
+import type { FavoriteFolder, Card } from '../types'
 import { useI18n } from '../i18n'
 import { AccountNeedToggles } from './AccountNeedToggles'
 import { CardItem } from './CardItem'
 import { SearchField } from './SearchField'
 
 interface Props {
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   cards: Card[]
   neededBy: Record<string, string[]>
   owned: Record<string, number>
@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function WishlistView({
-  accounts,
+  favoriteFolders,
   cards: allCards,
   neededBy,
   owned,
@@ -93,7 +93,7 @@ export function WishlistView({
         >
           <option value="all">{t('wishlist.filterAll')}</option>
           <option value="missing">{t('wishlist.filterMissing')}</option>
-          {accounts.map((a, i) => (
+          {favoriteFolders.map((a, i) => (
             <option key={a.id} value={a.id}>
               {t('wishlist.filterAccount', { name: a.name, n: i + 1 })}
             </option>
@@ -109,7 +109,8 @@ export function WishlistView({
             const qty = owned[c.id] ?? 0
             const needed = neededBy[c.id] ?? []
             const isTradeNeed = tradeNeedCardIds.has(c.id)
-            const allOn = accounts.length > 0 && accounts.every((a) => needed.includes(a.id))
+            const allOn =
+              favoriteFolders.length > 0 && favoriteFolders.every((a) => needed.includes(a.id))
             return (
               <CardItem
                 key={c.id}
@@ -136,7 +137,7 @@ export function WishlistView({
                       </span>
                     )}
                     <AccountNeedToggles
-                      accounts={accounts}
+                      favoriteFolders={favoriteFolders}
                       neededAccountIds={needed}
                       onToggle={(accountId) => onToggleNeeded?.(c.id, accountId)}
                       onToggleAll={() => onSetNeededForAll?.(c.id, !allOn)}

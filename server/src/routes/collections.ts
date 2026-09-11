@@ -4,12 +4,13 @@ import { desc, eq } from 'drizzle-orm'
 import type { AppVariables } from '../middleware/session.js'
 import { requireAuth } from '../middleware/auth.js'
 import type { Db } from '../db/index.js'
-import { userStates, users } from '../db/schema.js'
+import { profileStates, profiles, users } from '../db/schema.js'
 import { migrateState } from '../../../shared/migrateState.js'
 import { computeCollectionStats } from '../../../shared/collectionStats.js'
 import { countCompletedTradesToday } from '../../../shared/gameDay.js'
-import { DAILY_TRADE_INITIATION_LIMIT, type AppState } from '../../../shared/types.js'
+import { DAILY_TRADE_INITIATION_LIMIT, EMPTY_STATE, type AppState } from '../../../shared/types.js'
 import { generateShareSlug, looksLikeOpaqueShareSlug } from '../lib/shareSlug.js'
+import { resolveActiveProfile } from '../lib/profiles.js'
 
 function publicPayload(
   slug: string,
@@ -26,7 +27,7 @@ function publicPayload(
     acceptTradeOffers,
     owned: migrated.owned,
     neededBy: migrated.neededBy,
-    accounts: migrated.accounts,
+    favoriteFolders: migrated.favoriteFolders,
     updatedAt: updatedAt.toISOString(),
     stats: {
       uniqueOwned: stats.uniqueOwned,
@@ -38,22 +39,31 @@ function publicPayload(
   }
 }
 
+async function resolveUserActiveProfile(db: Db, userId: string) {
+  const [u] = await db
+    .select({ activeProfileId: users.activeProfileId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  return resolveActiveProfile(db, userId, u?.activeProfileId)
+}
+
 export function createCollectionsRoutes(db: Db) {
   const app = new Hono()
 
   app.get('/', async (c) => {
     const rows = await db
       .select({
-        slug: userStates.shareSlug,
-        username: users.username,
-        acceptTradeOffers: userStates.acceptTradeOffers,
-        updatedAt: userStates.updatedAt,
-        data: userStates.data,
+        slug: profileStates.shareSlug,
+        username: profiles.nickname,
+        acceptTradeOffers: profileStates.acceptTradeOffers,
+        updatedAt: profileStates.updatedAt,
+        data: profileStates.data,
       })
-      .from(userStates)
-      .innerJoin(users, eq(userStates.userId, users.id))
-      .where(eq(userStates.shareEnabled, true))
-      .orderBy(desc(userStates.updatedAt))
+      .from(profileStates)
+      .innerJoin(profiles, eq(profileStates.profileId, profiles.id))
+      .where(eq(profileStates.shareEnabled, true))
+      .orderBy(desc(profileStates.updatedAt))
 
     const collections = rows
       .filter((row) => row.slug)
@@ -82,16 +92,16 @@ export function createCollectionsRoutes(db: Db) {
     const slug = c.req.param('slug')
     const rows = await db
       .select({
-        slug: userStates.shareSlug,
-        username: users.username,
-        acceptTradeOffers: userStates.acceptTradeOffers,
-        data: userStates.data,
-        updatedAt: userStates.updatedAt,
-        shareEnabled: userStates.shareEnabled,
+        slug: profileStates.shareSlug,
+        username: profiles.nickname,
+        acceptTradeOffers: profileStates.acceptTradeOffers,
+        data: profileStates.data,
+        updatedAt: profileStates.updatedAt,
+        shareEnabled: profileStates.shareEnabled,
       })
-      .from(userStates)
-      .innerJoin(users, eq(userStates.userId, users.id))
-      .where(eq(userStates.shareSlug, slug))
+      .from(profileStates)
+      .innerJoin(profiles, eq(profileStates.profileId, profiles.id))
+      .where(eq(profileStates.shareSlug, slug))
       .limit(1)
 
     const row = rows[0]
@@ -120,14 +130,22 @@ export function createShareRoutes(db: Db) {
   app.get('/', async (c) => {
     const user = c.get('user')
     if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+    const profile = await resolveUserActiveProfile(db, user.id)
+    if (!profile) {
+      return c.json({
+        share: { enabled: false, slug: '', acceptTradeOffers: true },
+      })
+    }
+
     const rows = await db
       .select({
-        shareEnabled: userStates.shareEnabled,
-        shareSlug: userStates.shareSlug,
-        acceptTradeOffers: userStates.acceptTradeOffers,
+        shareEnabled: profileStates.shareEnabled,
+        shareSlug: profileStates.shareSlug,
+        acceptTradeOffers: profileStates.acceptTradeOffers,
       })
-      .from(userStates)
-      .where(eq(userStates.userId, user.id))
+      .from(profileStates)
+      .where(eq(profileStates.profileId, profile.id))
       .limit(1)
 
     const row = rows[0]
@@ -143,7 +161,9 @@ export function createShareRoutes(db: Db) {
   app.put('/', async (c) => {
     const user = c.get('user')
     if (!user) return c.json({ error: 'Unauthorized' }, 401)
-    if (!user.uid) {
+
+    const profile = await resolveUserActiveProfile(db, user.id)
+    if (!profile?.gameUid) {
       return c.json({ error: 'Set your game UID in site settings before sharing' }, 400)
     }
 
@@ -159,23 +179,23 @@ export function createShareRoutes(db: Db) {
 
     const current = await db
       .select({
-        shareSlug: userStates.shareSlug,
-        acceptTradeOffers: userStates.acceptTradeOffers,
+        shareSlug: profileStates.shareSlug,
+        acceptTradeOffers: profileStates.acceptTradeOffers,
       })
-      .from(userStates)
-      .where(eq(userStates.userId, user.id))
+      .from(profileStates)
+      .where(eq(profileStates.profileId, profile.id))
       .limit(1)
 
     let slug = current[0]?.shareSlug ?? null
-    if (!slug || !looksLikeOpaqueShareSlug(slug, user.uid)) {
+    if (!slug || !looksLikeOpaqueShareSlug(slug, profile.gameUid)) {
       for (let i = 0; i < 8; i += 1) {
         const candidate = generateShareSlug()
         const taken = await db
-          .select({ userId: userStates.userId })
-          .from(userStates)
-          .where(eq(userStates.shareSlug, candidate))
+          .select({ profileId: profileStates.profileId })
+          .from(profileStates)
+          .where(eq(profileStates.shareSlug, candidate))
           .limit(1)
-        if (!taken[0] || taken[0].userId === user.id) {
+        if (!taken[0] || taken[0].profileId === profile.id) {
           slug = candidate
           break
         }
@@ -186,19 +206,33 @@ export function createShareRoutes(db: Db) {
     const acceptTradeOffers = parsed.data.acceptTradeOffers ?? current[0]?.acceptTradeOffers ?? true
 
     const [updated] = await db
-      .update(userStates)
+      .update(profileStates)
       .set({
         shareEnabled: parsed.data.enabled,
         shareSlug: slug,
         acceptTradeOffers,
         updatedAt: new Date(),
+        updatedByUserId: user.id,
       })
-      .where(eq(userStates.userId, user.id))
+      .where(eq(profileStates.profileId, profile.id))
       .returning({
-        shareEnabled: userStates.shareEnabled,
-        shareSlug: userStates.shareSlug,
-        acceptTradeOffers: userStates.acceptTradeOffers,
+        shareEnabled: profileStates.shareEnabled,
+        shareSlug: profileStates.shareSlug,
+        acceptTradeOffers: profileStates.acceptTradeOffers,
       })
+
+    // If no legacy state row yet, insert one so share settings persist.
+    if (!updated) {
+      await db.insert(profileStates).values({
+        profileId: profile.id,
+        data: EMPTY_STATE,
+        updatedAt: new Date(),
+        updatedByUserId: user.id,
+        shareEnabled: parsed.data.enabled,
+        shareSlug: slug,
+        acceptTradeOffers,
+      })
+    }
 
     return c.json({
       share: {

@@ -1,11 +1,11 @@
 import type { AppState } from '../types'
 
 const DB_NAME = 'card-trades'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE_NAME = 'event-states'
 
 export type LocalEventState = {
-  userId: string
+  profileId: string
   eventSlug: string
   data: AppState
   baseUpdatedAt: string | null
@@ -13,8 +13,8 @@ export type LocalEventState = {
   dirty: boolean
 }
 
-function storageKey(userId: string, eventSlug: string) {
-  return `${userId}::${eventSlug}`
+function storageKey(profileId: string, eventSlug: string) {
+  return `${profileId}::${eventSlug}`
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -22,8 +22,12 @@ function openDb(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'))
     request.onsuccess = () => resolve(request.result)
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result
+      const oldVersion = event.oldVersion
+      if (oldVersion < 2 && db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME)
+      }
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'key' })
       }
@@ -55,12 +59,12 @@ async function withStore<T>(
 }
 
 export async function readLocalEventState(
-  userId: string,
+  profileId: string,
   eventSlug: string,
 ): Promise<LocalEventState | null> {
   try {
     const row = await withStore<StoredRow | undefined>('readonly', (store) =>
-      store.get(storageKey(userId, eventSlug)),
+      store.get(storageKey(profileId, eventSlug)),
     )
     if (!row) return null
     const { key: _key, ...rest } = row
@@ -73,7 +77,7 @@ export async function readLocalEventState(
 export async function writeLocalEventState(entry: LocalEventState): Promise<void> {
   try {
     await withStore('readwrite', (store) => {
-      const row: StoredRow = { key: storageKey(entry.userId, entry.eventSlug), ...entry }
+      const row: StoredRow = { key: storageKey(entry.profileId, entry.eventSlug), ...entry }
       return store.put(row)
     })
   } catch {
@@ -81,9 +85,9 @@ export async function writeLocalEventState(entry: LocalEventState): Promise<void
   }
 }
 
-export async function clearLocalEventState(userId: string, eventSlug: string): Promise<void> {
+export async function clearLocalEventState(profileId: string, eventSlug: string): Promise<void> {
   try {
-    await withStore('readwrite', (store) => store.delete(storageKey(userId, eventSlug)))
+    await withStore('readwrite', (store) => store.delete(storageKey(profileId, eventSlug)))
   } catch {
     // ignore
   }

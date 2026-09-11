@@ -206,7 +206,7 @@ export function SharedCollectionCollectionTab() {
         cards={event.cards}
         sets={event.sets}
         owned={collection.owned}
-        accounts={collection.accounts}
+        favoriteFolders={collection.favoriteFolders}
         neededBy={collection.neededBy}
         reservedByCard={{}}
         reservedPartners={{}}
@@ -265,7 +265,7 @@ export function SharedCollectionNeededTab() {
     <>
       <WishlistView
         readOnly
-        accounts={collection.accounts}
+        favoriteFolders={collection.favoriteFolders}
         cards={event.cards}
         neededBy={collection.neededBy}
         owned={collection.owned}

@@ -75,7 +75,7 @@ function listingBonus(listing: CozyFarmListing, fruit: CozyFarmFruit): number | 
 type FruitSort = { fruit: CozyFarmFruit }
 
 function CozyFarmShell() {
-  const { user, logout, setUid, uploadAvatar, accounts, switchAccount, removeAccount, addAccount } =
+  const { user, logout, uploadAvatar, accounts, switchAccount, removeAccount, addAccount, profiles, patchActiveProfileId } =
     useOutletContext<AuthOutletContext>()
   const { t, locale, setLocale } = useI18n()
   const [listings, setListings] = useState<CozyFarmListing[]>([])
@@ -100,9 +100,10 @@ function CozyFarmShell() {
 
   const isSuperadmin = user.permissions.includes('roles:manage')
   const isAdmin = user.permissions.includes('admin:access')
+  const myProfileIds = new Set(profiles.profiles.map((p) => p.id))
   const canManageListing = (listing: CozyFarmListing) =>
-    listing.userId === user.id || isAdmin
-  const showManageColumn = isAdmin || listings.some((l) => l.userId === user.id)
+    myProfileIds.has(listing.profileId) || isAdmin
+  const showManageColumn = isAdmin || listings.some((l) => myProfileIds.has(l.profileId))
   const emptyBonuses = (): Record<CozyFarmFruit, string> => ({
     dragonfruit: '',
     carrot: '',
@@ -207,9 +208,8 @@ function CozyFarmShell() {
   }
 
   const buildPayload = (): CozyFarmListingInput | null => {
-    const uid = gameUid.trim()
-    if (!uid) return null
-    const payload: CozyFarmListingInput = { gameUid: uid }
+    const payload: CozyFarmListingInput = {}
+    if (editingId && gameUid.trim()) payload.gameUid = gameUid.trim()
     let hasBonus = false
     for (const fruit of COZY_FARM_FRUITS) {
       const value = parseBonus(bonuses[fruit])
@@ -260,17 +260,17 @@ function CozyFarmShell() {
 
       <AppToolbar
         username={user.username}
-        uid={user.uid}
         avatarUrl={user.avatarUrl}
         userId={user.id}
         permissions={user.permissions}
         accounts={accounts}
+        profiles={profiles}
         onLogout={logout}
-        onSetUid={setUid}
         onUploadAvatar={uploadAvatar}
         onSwitchAccount={switchAccount}
         onRemoveAccount={removeAccount}
         onAddAccount={addAccount}
+        onActiveProfileChange={patchActiveProfileId}
         locale={locale}
         onLocaleChange={setLocale}
       />
@@ -358,16 +358,27 @@ function CozyFarmShell() {
           <div className="trade-templates__body">
             <p className="trade-templates__hint">{t('cozyFarm.boardHint')}</p>
             <form className="cozy-form" onSubmit={(e) => void onSubmit(e)}>
-              <label className="cozy-field">
-                <span>{t('cozyFarm.gameUid')}</span>
-                <input
-                  value={gameUid}
-                  onChange={(e) => setGameUid(e.target.value)}
-                  required
-                  maxLength={64}
-                  autoComplete="off"
-                />
-              </label>
+              {!profiles.activeProfileId ? (
+                <p className="cozy-error">{t('profiles.gate')}</p>
+              ) : (
+                <p className="trade-templates__hint">
+                  {t('cozyFarm.activeProfile', {
+                    nickname: profiles.activeProfile?.nickname ?? '',
+                    uid: profiles.activeProfile?.gameUid ?? '',
+                  })}
+                </p>
+              )}
+              {editingId && (
+                <label className="cozy-field">
+                  <span>{t('cozyFarm.gameUid')}</span>
+                  <input
+                    value={gameUid}
+                    onChange={(e) => setGameUid(e.target.value)}
+                    maxLength={64}
+                    autoComplete="off"
+                  />
+                </label>
+              )}
 
               <fieldset className="cozy-bonuses">
                 <legend>{t('cozyFarm.bonuses')}</legend>
@@ -421,7 +432,7 @@ function CozyFarmShell() {
             <table className="cozy-table">
               <thead>
                 <tr>
-                  <th>{t('cozyFarm.gameUid')}</th>
+                  <th>{t('cozyFarm.profile')}</th>
                   {COZY_FARM_FRUITS.map((fruit) => {
                     const active = fruitSort?.fruit === fruit
                     const label = t(FRUIT_LABEL[fruit])
@@ -454,7 +465,7 @@ function CozyFarmShell() {
               <tbody>
                 {sortedListings.map((listing) => {
                   const score = listing.likes - listing.dislikes
-                  const canVote = listing.userId !== user.id || isSuperadmin
+                  const canVote = !myProfileIds.has(listing.profileId) || isSuperadmin
                   const canManage = canManageListing(listing)
                   const ratingDetail = t('cozyFarm.ratingDetail', {
                     likes: listing.likes,
@@ -463,14 +474,17 @@ function CozyFarmShell() {
                   return (
                   <tr key={listing.id}>
                     <td>
-                      <button
-                        type="button"
-                        className={`cozy-table__uid${copiedUidId === listing.id ? ' is-copied' : ''}`}
-                        onClick={() => void copyUid(listing.id, listing.gameUid)}
-                        title={t('cozyFarm.copyUid')}
-                      >
-                        {copiedUidId === listing.id ? t('common.copied') : listing.gameUid}
-                      </button>
+                      <div className="cozy-table__profile">
+                        <strong>{listing.nickname}</strong>
+                        <button
+                          type="button"
+                          className={`cozy-table__uid${copiedUidId === listing.id ? ' is-copied' : ''}`}
+                          onClick={() => void copyUid(listing.id, listing.gameUid)}
+                          title={t('cozyFarm.copyUid')}
+                        >
+                          {copiedUidId === listing.id ? t('common.copied') : listing.gameUid}
+                        </button>
+                      </div>
                     </td>
                     {COZY_FARM_FRUITS.map((fruit) => {
                       const value = listingBonus(listing, fruit)

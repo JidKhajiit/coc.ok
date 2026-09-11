@@ -15,7 +15,7 @@ import {
   CardTradesTrendsTab,
   CardTradesWishlistTab,
 } from './pages/CardTradesPage'
-import { AdminPage, AdminUsersTab, AdminRolesTab, AdminBackupTab, AdminEventsTab } from './pages/AdminPage'
+import { AdminPage, AdminUsersTab, AdminRolesTab, AdminBackupTab, AdminEventsTab, AdminClaimsTab } from './pages/AdminPage'
 import {
   SharedCollectionCollectionTab,
   SharedCollectionNeededTab,
@@ -77,6 +77,7 @@ export default function App() {
           <Route path="roles" element={<AdminRolesTab />} />
           <Route path="backup" element={<AdminBackupTab />} />
           <Route path="events" element={<AdminEventsTab />} />
+          <Route path="claims" element={<AdminClaimsTab />} />
         </Route>
       </Route>
 

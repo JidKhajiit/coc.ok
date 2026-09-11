@@ -1,8 +1,14 @@
-import type { Account, AppState, TradeRecord, TradeSource } from './types.js'
-import { DAILY_TRADE_INITIATION_LIMIT, DEFAULT_ACCOUNTS, SOLO_ACCOUNT_ID } from './types.js'
+import type { AppState, FavoriteFolder, TradeRecord, TradeSource } from './types.js'
+import { DAILY_TRADE_INITIATION_LIMIT, DEFAULT_FAVORITE_FOLDERS, SOLO_FOLDER_ID } from './types.js'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
 const MAX_CARD_NUMBER = 135
+
+type LegacyState = Partial<AppState> & {
+  wishlist?: string[]
+  /** @deprecated legacy star folders */
+  accounts?: FavoriteFolder[]
+}
 
 function normalizeLocale(value: unknown): 'ru' | 'en' {
   return value === 'en' ? 'en' : 'ru'
@@ -62,7 +68,31 @@ function migrateTrades(items: TradeRecord[] | undefined): TradeRecord[] {
   }))
 }
 
-export function migrateState(parsed: Partial<AppState> & { wishlist?: string[] }): AppState {
+function normalizeFolders(parsed: LegacyState): FavoriteFolder[] {
+  const raw = Array.isArray(parsed.favoriteFolders)
+    ? parsed.favoriteFolders
+    : Array.isArray(parsed.accounts)
+      ? parsed.accounts
+      : null
+
+  if (raw) {
+    return raw
+      .filter((a): a is FavoriteFolder => Boolean(a?.id && String(a.name ?? '').trim()))
+      .map((a) => ({ id: a.id, name: String(a.name).trim() }))
+  }
+
+  if (parsed.wishlist?.length) {
+    return [
+      { id: 'a1', name: 'Акк 1' },
+      { id: 'a2', name: 'Акк 2' },
+      { id: 'a3', name: 'Акк 3' },
+    ]
+  }
+
+  return DEFAULT_FAVORITE_FOLDERS
+}
+
+export function migrateState(parsed: LegacyState): AppState {
   const owned: Record<string, number> = {}
   for (const [id, qty] of Object.entries(parsed.owned ?? {})) {
     const next = migrateCardId(id)
@@ -70,35 +100,26 @@ export function migrateState(parsed: Partial<AppState> & { wishlist?: string[] }
     owned[next] = (owned[next] ?? 0) + qty
   }
 
-  const accounts: Account[] = Array.isArray(parsed.accounts)
-    ? parsed.accounts
-        .filter((a): a is Account => Boolean(a?.id && String(a.name ?? '').trim()))
-        .map((a) => ({ id: a.id, name: String(a.name).trim() }))
-    : parsed.wishlist?.length
-      ? [
-          { id: 'a1', name: 'Акк 1' },
-          { id: 'a2', name: 'Акк 2' },
-          { id: 'a3', name: 'Акк 3' },
-        ]
-      : DEFAULT_ACCOUNTS
-
-  const accountIds = new Set(accounts.map((a) => a.id))
+  const favoriteFolders = normalizeFolders(parsed)
+  const folderIds = new Set(favoriteFolders.map((a) => a.id))
   const neededBy: Record<string, string[]> = {}
 
   for (const [id, accs] of Object.entries(parsed.neededBy ?? {})) {
     const cardId = migrateCardId(id)
     if (!cardId || !(accs ?? []).length) continue
-    if (accounts.length === 0) {
-      neededBy[cardId] = [SOLO_ACCOUNT_ID]
+    if (favoriteFolders.length === 0) {
+      neededBy[cardId] = [SOLO_FOLDER_ID]
       continue
     }
-    const list = [...new Set((accs ?? []).filter((a) => accountIds.has(a) || a === SOLO_ACCOUNT_ID))]
-    if (list.length === 0 && (accs ?? []).includes(SOLO_ACCOUNT_ID)) {
-      neededBy[cardId] = [accounts[0]!.id]
-    } else if (list.filter((a) => a !== SOLO_ACCOUNT_ID).length) {
-      neededBy[cardId] = list.filter((a) => a !== SOLO_ACCOUNT_ID)
+    const list = [
+      ...new Set((accs ?? []).filter((a) => folderIds.has(a) || a === SOLO_FOLDER_ID)),
+    ]
+    if (list.length === 0 && (accs ?? []).includes(SOLO_FOLDER_ID)) {
+      neededBy[cardId] = [favoriteFolders[0]!.id]
+    } else if (list.filter((a) => a !== SOLO_FOLDER_ID).length) {
+      neededBy[cardId] = list.filter((a) => a !== SOLO_FOLDER_ID)
     } else if (list.length) {
-      neededBy[cardId] = [accounts[0]!.id]
+      neededBy[cardId] = [favoriteFolders[0]!.id]
     }
   }
 
@@ -106,13 +127,13 @@ export function migrateState(parsed: Partial<AppState> & { wishlist?: string[] }
     const cardId = migrateCardId(id)
     if (!cardId) continue
     neededBy[cardId] =
-      accounts.length > 0 ? accounts.map((a) => a.id) : [SOLO_ACCOUNT_ID]
+      favoriteFolders.length > 0 ? favoriteFolders.map((a) => a.id) : [SOLO_FOLDER_ID]
   }
 
   return {
     owned,
     neededBy,
-    accounts,
+    favoriteFolders,
     trades: migrateTrades(parsed.trades),
     potentialTrades: migrateTradeLike(parsed.potentialTrades),
     locale: normalizeLocale(parsed.locale),
@@ -124,7 +145,7 @@ export function isEmptyState(state: AppState): boolean {
   return (
     Object.keys(state.owned).length === 0 &&
     Object.keys(state.neededBy).length === 0 &&
-    state.accounts.length === 0 &&
+    state.favoriteFolders.length === 0 &&
     state.trades.length === 0 &&
     state.potentialTrades.length === 0
   )

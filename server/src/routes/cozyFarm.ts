@@ -2,9 +2,14 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { and, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/index.js'
-import { cozyFarmListings, cozyFarmVotes, users } from '../db/schema.js'
+import { cozyFarmListings, cozyFarmVotes, profiles, users } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
+import {
+  getMembership,
+  requireProfileAccess,
+  resolveActiveProfile,
+} from '../lib/profiles.js'
 
 const uuidSchema = z.string().uuid()
 
@@ -17,7 +22,7 @@ const bonusField = z
 
 const listingBodySchema = z
   .object({
-    gameUid: z.string().trim().min(1).max(64),
+    gameUid: z.string().trim().min(1).max(64).optional(),
     bonusDragonfruit: bonusField,
     bonusCarrot: bonusField,
     bonusBamboo: bonusField,
@@ -69,6 +74,15 @@ function maxBonus(row: {
   )
 }
 
+async function resolveUserActiveProfile(db: Db, userId: string) {
+  const [u] = await db
+    .select({ activeProfileId: users.activeProfileId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  return resolveActiveProfile(db, userId, u?.activeProfileId)
+}
+
 export function createCozyFarmRoutes(db: Db) {
   const app = new Hono<{ Variables: AppVariables }>()
   app.use('*', requireAuth)
@@ -79,8 +93,8 @@ export function createCozyFarmRoutes(db: Db) {
     const rows = await db
       .select({
         id: cozyFarmListings.id,
-        userId: cozyFarmListings.userId,
-        username: users.username,
+        profileId: cozyFarmListings.profileId,
+        nickname: profiles.nickname,
         gameUid: cozyFarmListings.gameUid,
         bonusDragonfruit: cozyFarmListings.bonusDragonfruit,
         bonusCarrot: cozyFarmListings.bonusCarrot,
@@ -94,12 +108,12 @@ export function createCozyFarmRoutes(db: Db) {
         dislikes: sql<number>`coalesce(sum(case when ${cozyFarmVotes.value} = -1 then ${cozyFarmVotes.weight} else 0 end), 0)::int`,
       })
       .from(cozyFarmListings)
-      .innerJoin(users, eq(cozyFarmListings.userId, users.id))
+      .innerJoin(profiles, eq(cozyFarmListings.profileId, profiles.id))
       .leftJoin(cozyFarmVotes, eq(cozyFarmVotes.listingId, cozyFarmListings.id))
       .groupBy(
         cozyFarmListings.id,
-        cozyFarmListings.userId,
-        users.username,
+        cozyFarmListings.profileId,
+        profiles.nickname,
         cozyFarmListings.gameUid,
         cozyFarmListings.bonusDragonfruit,
         cozyFarmListings.bonusCarrot,
@@ -124,8 +138,8 @@ export function createCozyFarmRoutes(db: Db) {
     const listings = rows
       .map((row) => ({
         id: row.id,
-        userId: row.userId,
-        username: row.username,
+        profileId: row.profileId,
+        nickname: row.nickname,
         gameUid: row.gameUid,
         bonusDragonfruit: row.bonusDragonfruit,
         bonusCarrot: row.bonusCarrot,
@@ -152,6 +166,11 @@ export function createCozyFarmRoutes(db: Db) {
 
   app.post('/listings', async (c) => {
     const me = c.get('user')!
+    const profile = await resolveUserActiveProfile(db, me.id)
+    if (!profile) {
+      return c.json({ error: 'Create a game profile before posting a listing' }, 400)
+    }
+
     const body = await c.req.json().catch(() => null)
     const parsed = listingBodySchema.safeParse(body)
     if (!parsed.success) {
@@ -162,8 +181,8 @@ export function createCozyFarmRoutes(db: Db) {
     const [created] = await db
       .insert(cozyFarmListings)
       .values({
-        userId: me.id,
-        gameUid: data.gameUid,
+        profileId: profile.id,
+        gameUid: profile.gameUid,
         bonusDragonfruit: nullIfUndefined(data.bonusDragonfruit),
         bonusCarrot: nullIfUndefined(data.bonusCarrot),
         bonusBamboo: nullIfUndefined(data.bonusBamboo),
@@ -173,7 +192,15 @@ export function createCozyFarmRoutes(db: Db) {
       })
       .returning()
 
-    return c.json({ listing: created }, 201)
+    return c.json(
+      {
+        listing: {
+          ...created,
+          nickname: profile.nickname,
+        },
+      },
+      201,
+    )
   })
 
   app.put('/listings/:id', async (c) => {
@@ -190,20 +217,25 @@ export function createCozyFarmRoutes(db: Db) {
     }
 
     const [existing] = await db
-      .select({ id: cozyFarmListings.id, userId: cozyFarmListings.userId })
+      .select({
+        id: cozyFarmListings.id,
+        profileId: cozyFarmListings.profileId,
+        gameUid: cozyFarmListings.gameUid,
+      })
       .from(cozyFarmListings)
       .where(eq(cozyFarmListings.id, listingId))
       .limit(1)
 
     if (!existing) return c.json({ error: 'Listing not found' }, 404)
     const isAdmin = me.permissions.includes('admin:access')
-    if (existing.userId !== me.id && !isAdmin) return c.json({ error: 'Forbidden' }, 403)
+    const access = await requireProfileAccess(db, existing.profileId, me.id, 'admin')
+    if (!access && !isAdmin) return c.json({ error: 'Forbidden' }, 403)
 
     const data = parsed.data
     const [updated] = await db
       .update(cozyFarmListings)
       .set({
-        gameUid: data.gameUid,
+        gameUid: data.gameUid ?? existing.gameUid,
         bonusDragonfruit: nullIfUndefined(data.bonusDragonfruit),
         bonusCarrot: nullIfUndefined(data.bonusCarrot),
         bonusBamboo: nullIfUndefined(data.bonusBamboo),
@@ -215,7 +247,18 @@ export function createCozyFarmRoutes(db: Db) {
       .where(eq(cozyFarmListings.id, listingId))
       .returning()
 
-    return c.json({ listing: updated })
+    const [profile] = await db
+      .select({ nickname: profiles.nickname })
+      .from(profiles)
+      .where(eq(profiles.id, existing.profileId))
+      .limit(1)
+
+    return c.json({
+      listing: {
+        ...updated,
+        nickname: profile?.nickname ?? access?.nickname ?? null,
+      },
+    })
   })
 
   app.delete('/listings/:id', async (c) => {
@@ -226,14 +269,15 @@ export function createCozyFarmRoutes(db: Db) {
     }
 
     const [existing] = await db
-      .select({ id: cozyFarmListings.id, userId: cozyFarmListings.userId })
+      .select({ id: cozyFarmListings.id, profileId: cozyFarmListings.profileId })
       .from(cozyFarmListings)
       .where(eq(cozyFarmListings.id, listingId))
       .limit(1)
 
     if (!existing) return c.json({ error: 'Listing not found' }, 404)
     const isAdmin = me.permissions.includes('admin:access')
-    if (existing.userId !== me.id && !isAdmin) return c.json({ error: 'Forbidden' }, 403)
+    const access = await requireProfileAccess(db, existing.profileId, me.id, 'admin')
+    if (!access && !isAdmin) return c.json({ error: 'Forbidden' }, 403)
 
     await db.delete(cozyFarmListings).where(eq(cozyFarmListings.id, listingId))
     return c.json({ ok: true })
@@ -255,13 +299,15 @@ export function createCozyFarmRoutes(db: Db) {
     }
 
     const [listing] = await db
-      .select({ id: cozyFarmListings.id, userId: cozyFarmListings.userId })
+      .select({ id: cozyFarmListings.id, profileId: cozyFarmListings.profileId })
       .from(cozyFarmListings)
       .where(eq(cozyFarmListings.id, listingId))
       .limit(1)
 
     if (!listing) return c.json({ error: 'Listing not found' }, 404)
-    if (listing.userId === me.id && !isSuperadmin) {
+
+    const membership = await getMembership(db, listing.profileId, me.id)
+    if (membership && !isSuperadmin) {
       return c.json({ error: 'Cannot vote on your own listing' }, 400)
     }
 

@@ -1,12 +1,11 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { hash, verify } from '@node-rs/argon2'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getCookie } from 'hono/cookie'
 import type { Db } from '../db/index.js'
 import {
   authTokens,
-  userStates,
   users,
   userRoles,
   roles,
@@ -35,7 +34,6 @@ import {
 } from '../middleware/session.js'
 import { createRateLimit } from '../middleware/rateLimit.js'
 import { requireAuth } from '../middleware/auth.js'
-import { EMPTY_STATE } from '../../../shared/types.js'
 import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -54,7 +52,7 @@ const usernameSchema = z
   .max(32, 'Username must be at most 32 characters')
   .regex(/^[a-zA-Z0-9_-]+$/, 'Username may only contain letters, numbers, _ and -')
 
-/** Game UID used as the public share-link identity. */
+/** Game UID validation (used by profiles routes). */
 export const uidSchema = z
   .string()
   .trim()
@@ -78,13 +76,8 @@ const strongPasswordSchema = passwordSchema.refine(isPasswordStrong, {
 
 const registerSchema = z.object({
   username: usernameSchema,
-  uid: uidSchema,
   email: emailSchema,
   password: strongPasswordSchema,
-})
-
-const setUidSchema = z.object({
-  uid: uidSchema,
 })
 
 const loginSchema = z.object({
@@ -165,7 +158,7 @@ export function createAuthRoutes(db: Db, env: Env) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
     }
 
-    const { username, uid, password } = parsed.data
+    const { username, password } = parsed.data
     const email = normalizeEmail(parsed.data.email)
 
     const existingUsername = await db
@@ -178,13 +171,8 @@ export function createAuthRoutes(db: Db, env: Env) {
       .from(users)
       .where(eq(users.email, email))
       .limit(1)
-    const existingUid = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.uid, uid))
-      .limit(1)
-    if (existingUsername.length > 0 || existingEmail.length > 0 || existingUid.length > 0) {
-      // Same response for username/email/uid conflict to avoid account enumeration.
+    if (existingUsername.length > 0 || existingEmail.length > 0) {
+      // Same response for username/email conflict to avoid account enumeration.
       return c.json({ error: 'Unable to register with these credentials' }, 409)
     }
 
@@ -196,14 +184,13 @@ export function createAuthRoutes(db: Db, env: Env) {
     const passwordHash = await hash(password)
     const [user] = await db
       .insert(users)
-      .values({ username, uid, email, emailVerified: false, passwordHash })
-      .returning({ id: users.id, username: users.username, uid: users.uid })
+      .values({ username, email, emailVerified: false, passwordHash })
+      .returning({ id: users.id, username: users.username })
 
     if (!user) {
       return c.json({ error: 'Failed to create user' }, 500)
     }
 
-    await db.insert(userStates).values({ userId: user.id, data: EMPTY_STATE })
     await db.insert(userRoles).values({ userId: user.id, roleId: userRole.id })
 
     try {
@@ -234,7 +221,7 @@ export function createAuthRoutes(db: Db, env: Env) {
       .select({
         id: users.id,
         username: users.username,
-        uid: users.uid,
+        activeProfileId: users.activeProfileId,
         avatarUrl: users.avatarUrl,
         passwordHash: users.passwordHash,
         email: users.email,
@@ -274,7 +261,7 @@ export function createAuthRoutes(db: Db, env: Env) {
       user: {
         id: user.id,
         username: user.username,
-        uid: user.uid,
+        activeProfileId: user.activeProfileId,
         avatarUrl: user.avatarUrl,
         permissions: perms,
       },
@@ -467,55 +454,6 @@ export function createAuthRoutes(db: Db, env: Env) {
     })
   })
 
-  /** Set game UID once for legacy accounts that registered before UID was required. */
-  app.put('/uid', requireAuth, async (c) => {
-    const user = c.get('user')!
-    if (user.uid) {
-      return c.json({ error: 'UID is already set' }, 409)
-    }
-
-    const body = await c.req.json().catch(() => null)
-    const parsed = setUidSchema.safeParse(body)
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
-    }
-
-    const uid = parsed.data.uid
-    const existing = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.uid, uid))
-      .limit(1)
-    if (existing.length > 0) {
-      return c.json({ error: 'This UID is already taken' }, 409)
-    }
-
-    const [updated] = await db
-      .update(users)
-      .set({ uid })
-      .where(and(eq(users.id, user.id), isNull(users.uid)))
-      .returning({
-        id: users.id,
-        username: users.username,
-        uid: users.uid,
-        avatarUrl: users.avatarUrl,
-      })
-
-    if (!updated?.uid) {
-      return c.json({ error: 'UID is already set' }, 409)
-    }
-
-    return c.json({
-      user: {
-        id: updated.id,
-        username: updated.username,
-        uid: updated.uid,
-        avatarUrl: updated.avatarUrl,
-        permissions: user.permissions,
-      },
-    })
-  })
-
   app.put('/avatar', requireAuth, rateLimit, async (c) => {
     const user = c.get('user')!
     const body = await c.req.parseBody({ all: true })
@@ -555,7 +493,7 @@ export function createAuthRoutes(db: Db, env: Env) {
       user: {
         id: user.id,
         username: user.username,
-        uid: user.uid,
+        activeProfileId: user.activeProfileId,
         avatarUrl,
         permissions: user.permissions,
       },

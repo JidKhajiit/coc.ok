@@ -37,7 +37,7 @@ function CardTradesShell({
   app: ReturnType<typeof useAppState>
   event: CardTradeEvent
 }) {
-  const { user, logout, setUid, uploadAvatar, accounts, switchAccount, removeAccount, addAccount } =
+  const { user, logout, uploadAvatar, accounts, switchAccount, removeAccount, addAccount, profiles, patchActiveProfileId } =
     useOutletContext<AuthOutletContext>()
   const [eventSettingsOpen, setEventSettingsOpen] = useState(false)
   const [saveToast, setSaveToast] = useState<string | null>(null)
@@ -106,17 +106,17 @@ function CardTradesShell({
 
       <AppToolbar
         username={user.username}
-        uid={user.uid}
         avatarUrl={user.avatarUrl}
         userId={user.id}
         permissions={user.permissions}
         accounts={accounts}
+        profiles={profiles}
         onLogout={logout}
-        onSetUid={setUid}
         onUploadAvatar={uploadAvatar}
         onSwitchAccount={switchAccount}
         onRemoveAccount={removeAccount}
         onAddAccount={addAccount}
+        onActiveProfileChange={patchActiveProfileId}
         locale={locale}
         onLocaleChange={handleLocaleChange}
         onPageSettings={() => setEventSettingsOpen(true)}
@@ -126,7 +126,11 @@ function CardTradesShell({
 
       {app.conflict ? (
         <div className="sync-conflict" role="alert">
-          <span>{t('auth.conflict')}</span>
+          <span>
+            {app.conflict.updatedByUsername
+              ? t('auth.conflictBy', { user: app.conflict.updatedByUsername })
+              : t('auth.conflict')}
+          </span>
           <div className="sync-conflict__actions">
             <button type="button" className="btn btn--primary btn--sm" onClick={() => void app.keepLocalChanges()}>
               {t('auth.conflictKeepLocal')}
@@ -150,12 +154,12 @@ function CardTradesShell({
 
       <CardTradesSettingsDrawer
         open={eventSettingsOpen}
-        uid={user.uid}
+        hasActiveProfile={Boolean(profiles.activeProfileId)}
         onClose={() => setEventSettingsOpen(false)}
-        accounts={app.state.accounts}
-        onAdd={() => app.addAccount()}
-        onRemove={app.removeAccount}
-        onRename={app.renameAccount}
+        favoriteFolders={app.state.favoriteFolders}
+        onAdd={() => app.addFavoriteFolder()}
+        onRemove={app.removeFavoriteFolder}
+        onRename={app.renameFavoriteFolder}
         onExport={app.exportBackup}
         onCopyBackup={app.copyBackup}
         onImport={app.importBackup}
@@ -164,8 +168,12 @@ function CardTradesShell({
         eventName={event.name}
       />
 
-      {app.loading ? (
+      {profiles.loading || app.loading ? (
         <div className="app-loading">{t('auth.loading')}</div>
+      ) : app.needsProfile ? (
+        <div className="app-loading profile-gate">
+          <p>{t('profiles.gate')}</p>
+        </div>
       ) : (
         <>
           <header className="hero">
@@ -289,7 +297,7 @@ function CardTradesShell({
 
 export type CardTradesOutletContext = {
   app: ReturnType<typeof useAppState>
-  user: { id: string; username: string; uid: string | null; permissions: string[] }
+  user: import('../api/client').AuthUser
   event: { slug: string; name: string; cards: Card[]; sets: CardSet[] }
 }
 
@@ -303,7 +311,7 @@ export function CardTradesCollectionTab() {
         cards={event.cards}
         sets={event.sets}
         owned={app.state.owned}
-        accounts={app.state.accounts}
+        favoriteFolders={app.state.favoriteFolders}
         neededBy={app.state.neededBy}
         reservedByCard={app.reservedByCard}
         reservedPartners={app.reservedPartners}
@@ -337,7 +345,7 @@ export function CardTradesWishlistTab() {
   return (
     <>
       <WishlistView
-        accounts={app.state.accounts}
+        favoriteFolders={app.state.favoriteFolders}
         cards={event.cards}
         neededBy={app.state.neededBy}
         owned={app.state.owned}
@@ -432,11 +440,11 @@ export function CardTradesTrendsTab() {
 
 export function CardTradesPage() {
   const { eventSlug = '' } = useParams()
-  const { user } = useOutletContext<AuthOutletContext>()
+  const { profiles } = useOutletContext<AuthOutletContext>()
   const [event, setEvent] = useState<CardTradeEvent | null>(null)
   const [eventError, setEventError] = useState<string | null>(null)
   const [eventLoading, setEventLoading] = useState(true)
-  const app = useAppState(eventSlug, event?.cards ?? [], user.id)
+  const app = useAppState(eventSlug, event?.cards ?? [], profiles.activeProfileId)
   const locale = normalizeLocale(app.state.locale)
 
   const setLocale = useCallback(

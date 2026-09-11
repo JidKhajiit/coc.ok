@@ -13,10 +13,13 @@ export interface Card {
   unknownName?: boolean
 }
 
-export interface Account {
+export interface FavoriteFolder {
   id: string
   name: string
 }
+
+/** @deprecated Use FavoriteFolder */
+export type Account = FavoriteFolder
 
 /** Источник записи в истории обменов */
 export type TradeSource = 'completed' | 'observed' | 'cancelled'
@@ -49,9 +52,9 @@ export interface PotentialTrade {
 
 export interface AppState {
   owned: Record<string, number>
-  /** cardId → id аккаунтов, которым нужна карта */
+  /** cardId → id папок избранного, которым нужна карта */
   neededBy: Record<string, string[]>
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   trades: TradeRecord[]
   potentialTrades: PotentialTrade[]
   /** UI language */
@@ -69,10 +72,15 @@ export interface TrendItem {
   count: number
 }
 
-export const DEFAULT_ACCOUNTS: Account[] = []
+export const DEFAULT_FAVORITE_FOLDERS: FavoriteFolder[] = []
 
-/** Id для режима без списка аккаунтов (одна звезда) */
-export const SOLO_ACCOUNT_ID = 'solo'
+/** Id для режима без списка папок (одна звезда) */
+export const SOLO_FOLDER_ID = 'solo'
+
+/** @deprecated Use DEFAULT_FAVORITE_FOLDERS */
+export const DEFAULT_ACCOUNTS = DEFAULT_FAVORITE_FOLDERS
+/** @deprecated Use SOLO_FOLDER_ID */
+export const SOLO_ACCOUNT_ID = SOLO_FOLDER_ID
 
 /** Лимит обменов в день, дающих бонусную звезду */
 export const DAILY_BONUS_TRADE_LIMIT = 20
