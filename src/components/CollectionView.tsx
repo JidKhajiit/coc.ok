@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { CardSet } from '../data/cards'
-import type { Account, Card, CardColor, Rarity } from '../types'
+import type { FavoriteFolder, Card, CardColor, Rarity } from '../types'
 import { useI18n } from '../i18n'
 import { AccountNeedToggles } from './AccountNeedToggles'
 import { CardItem } from './CardItem'
@@ -13,7 +13,7 @@ interface Props {
   cards: Card[]
   sets: CardSet[]
   owned: Record<string, number>
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   neededBy: Record<string, string[]>
   reservedByCard: Record<string, number>
   reservedPartners: Record<string, string[]>
@@ -36,7 +36,7 @@ export function CollectionView({
   cards,
   sets,
   owned,
-  accounts,
+  favoriteFolders,
   neededBy,
   reservedByCard,
   reservedPartners,
@@ -118,7 +118,7 @@ export function CollectionView({
     const reserved = reservedByCard[c.id] ?? 0
     const tradeable = Math.max(0, qty - 1 - reserved)
     const needed = neededBy[c.id] ?? []
-    const allOn = accounts.every((a) => needed.includes(a.id))
+    const allOn = favoriteFolders.every((a) => needed.includes(a.id))
     return (
       <CardItem
         key={c.id}
@@ -151,7 +151,7 @@ export function CollectionView({
               +
             </button>
             <AccountNeedToggles
-              accounts={accounts}
+              favoriteFolders={favoriteFolders}
               neededAccountIds={needed}
               onToggle={(accountId) => onToggleNeeded?.(c.id, accountId)}
               onToggleAll={() => onSetNeededForAll?.(c.id, !allOn)}

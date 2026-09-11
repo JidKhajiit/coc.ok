@@ -1,4 +1,4 @@
-import type { Account, AppState, Card, TrendItem } from '../types'
+import type { AppState, Card, FavoriteFolder, TrendItem } from '../types'
 import type { CardSet } from '../data/cards'
 
 export type PopularityTier = 'S' | 'A' | 'B' | 'C' | 'D'
@@ -9,7 +9,7 @@ export type PublicCollection = {
   acceptTradeOffers: boolean
   owned: Record<string, number>
   neededBy: Record<string, string[]>
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   updatedAt: string
   stats: {
     uniqueOwned: number
@@ -115,6 +115,8 @@ export class ApiError extends Error {
 export type EventStatePayload = {
   data: AppState
   updatedAt: string | null
+  updatedByUserId: string | null
+  updatedByUsername: string | null
 }
 
 export function getConflictPayload(err: unknown): EventStatePayload | null {
@@ -124,16 +126,20 @@ export function getConflictPayload(err: unknown): EventStatePayload | null {
   const data = 'data' in body ? body.data : null
   const updatedAt = 'updatedAt' in body ? body.updatedAt : null
   if (!data || typeof data !== 'object') return null
+  const updatedByUserId = 'updatedByUserId' in body ? body.updatedByUserId : null
+  const updatedByUsername = 'updatedByUsername' in body ? body.updatedByUsername : null
   return {
     data: data as AppState,
     updatedAt: typeof updatedAt === 'string' ? updatedAt : null,
+    updatedByUserId: typeof updatedByUserId === 'string' ? updatedByUserId : null,
+    updatedByUsername: typeof updatedByUsername === 'string' ? updatedByUsername : null,
   }
 }
 
 export type AuthUser = {
   id: string
   username: string
-  uid: string | null
+  activeProfileId: string | null
   avatarUrl: string | null
   permissions: string[]
 }
@@ -141,9 +147,37 @@ export type AuthUser = {
 export type DeviceAccount = {
   id: string
   username: string
-  uid: string | null
   avatarUrl: string | null
   active: boolean
+}
+
+export type GameProfile = {
+  id: string
+  gameUid: string
+  nickname: string
+  ownerUserId: string
+  role?: 'owner' | 'admin' | string
+  createdAt?: string
+}
+
+export type ProfileMember = {
+  userId: string
+  username: string
+  role: string
+}
+
+export type ProfileClaim = {
+  id: string
+  profileId: string
+  gameUid: string
+  nickname: string
+  claimantUserId: string
+  claimantUsername: string
+  screenshotPath: string
+  message: string | null
+  status: string
+  createdAt: string
+  ownerUserId: string
 }
 
 export type AuthSessionPayload = {
@@ -226,22 +260,13 @@ export async function login(login: string, password: string): Promise<AuthSessio
 
 export async function register(
   username: string,
-  uid: string,
   email: string,
   password: string,
 ): Promise<{ needsVerification: boolean; message: string }> {
   return request('/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ username, uid, email, password }),
+    body: JSON.stringify({ username, email, password }),
   })
-}
-
-export async function setUid(uid: string): Promise<AuthUser> {
-  const { user } = await request<{ user: AuthUser }>('/api/auth/uid', {
-    method: 'PUT',
-    body: JSON.stringify({ uid }),
-  })
-  return user
 }
 
 export async function uploadAvatar(file: File): Promise<AuthSessionPayload> {
@@ -608,8 +633,8 @@ export async function importDatabaseBackup(
 
 export type CozyFarmListing = {
   id: string
-  userId: string
-  username: string
+  profileId: string
+  nickname: string
   gameUid: string
   bonusDragonfruit: number | null
   bonusCarrot: number | null
@@ -625,7 +650,7 @@ export type CozyFarmListing = {
 }
 
 export type CozyFarmListingInput = {
-  gameUid: string
+  gameUid?: string
   bonusDragonfruit?: number | null
   bonusCarrot?: number | null
   bonusBamboo?: number | null
@@ -669,5 +694,109 @@ export async function voteCozyFarmListing(
   return request(`/api/cozy-farm/listings/${encodeURIComponent(id)}/vote`, {
     method: 'POST',
     body: JSON.stringify({ value }),
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Game Profiles
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function listProfiles(): Promise<{
+  profiles: GameProfile[]
+  activeProfileId: string | null
+}> {
+  return request('/api/profiles')
+}
+
+export async function createProfile(
+  gameUid: string,
+  nickname: string,
+): Promise<{ profile: GameProfile; activeProfileId: string | null }> {
+  return request('/api/profiles', {
+    method: 'POST',
+    body: JSON.stringify({ gameUid, nickname }),
+  })
+}
+
+export async function updateProfile(
+  id: string,
+  nickname: string,
+): Promise<{ profile: GameProfile }> {
+  return request(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ nickname }),
+  })
+}
+
+export async function deleteProfile(
+  id: string,
+): Promise<{ ok: true; activeProfileId: string | null }> {
+  return request(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function setActiveProfile(
+  profileId: string,
+): Promise<{ activeProfileId: string; profile: GameProfile }> {
+  return request('/api/profiles/active', {
+    method: 'PUT',
+    body: JSON.stringify({ profileId }),
+  })
+}
+
+export async function listProfileAdmins(
+  profileId: string,
+): Promise<{ members: ProfileMember[] }> {
+  return request(`/api/profiles/${encodeURIComponent(profileId)}/admins`)
+}
+
+export async function addProfileAdmin(
+  profileId: string,
+  username: string,
+): Promise<{ member: ProfileMember }> {
+  return request(`/api/profiles/${encodeURIComponent(profileId)}/admins`, {
+    method: 'POST',
+    body: JSON.stringify({ username }),
+  })
+}
+
+export async function removeProfileAdmin(profileId: string, userId: string): Promise<{ ok: true }> {
+  return request(
+    `/api/profiles/${encodeURIComponent(profileId)}/admins/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function submitProfileClaim(
+  profileId: string,
+  screenshot: File,
+  message?: string,
+): Promise<{ claim: { id: string; status: string } }> {
+  const form = new FormData()
+  form.append('screenshot', screenshot)
+  if (message?.trim()) form.append('message', message.trim())
+  const res = await fetch(`/api/profiles/${encodeURIComponent(profileId)}/claims`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const errMsg = typeof body.error === 'string' ? body.error : `Request failed (${res.status})`
+    throw new ApiError(errMsg, res.status, body)
+  }
+  return body as { claim: { id: string; status: string } }
+}
+
+export async function listProfileClaimsQueue(): Promise<{ claims: ProfileClaim[] }> {
+  return request('/api/profiles/claims/queue')
+}
+
+export async function resolveProfileClaim(
+  claimId: string,
+  action: 'approve' | 'reject',
+): Promise<{ ok: true; status: string }> {
+  return request(`/api/profiles/claims/${encodeURIComponent(claimId)}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
   })
 }

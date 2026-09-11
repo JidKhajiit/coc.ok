@@ -3,14 +3,14 @@ import { migrateState, isEmptyState } from '../../shared/migrateState'
 import { EMPTY_STATE } from '../../shared/types'
 import type { Card } from '../types'
 import type {
-  Account,
   AppState,
+  FavoriteFolder,
   PotentialTrade,
   TradeRecord,
   TradeSource,
   TrendItem,
 } from '../types'
-import { DAILY_TRADE_INITIATION_LIMIT, SOLO_ACCOUNT_ID } from '../types'
+import { DAILY_TRADE_INITIATION_LIMIT, SOLO_FOLDER_ID } from '../types'
 import { normalizeLocale, type Locale } from '../i18n'
 import { isSameGameDay } from '../utils/gameDay'
 import * as api from '../api/client'
@@ -55,9 +55,10 @@ function uid(): string {
 export type StateConflict = {
   serverData: AppState
   serverUpdatedAt: string | null
+  updatedByUsername: string | null
 }
 
-export function useAppState(eventSlug: string, cards: Card[], userId: string) {
+export function useAppState(eventSlug: string, cards: Card[], profileId: string | null) {
   const [state, setState] = useState<AppState>(EMPTY_STATE)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -87,8 +88,9 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
 
   const persistLocal = useCallback(
     async (data: AppState, dirty: boolean) => {
+      if (!profileId) return
       await writeLocalEventState({
-        userId,
+        profileId,
         eventSlug,
         data,
         baseUpdatedAt: baseUpdatedAtRef.current,
@@ -96,11 +98,12 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
         dirty,
       })
     },
-    [userId, eventSlug],
+    [profileId, eventSlug],
   )
 
   const syncToServer = useCallback(
     async (snapshot: AppState, generation: number) => {
+      if (!profileId) return
       if (syncInFlightRef.current) return
       syncInFlightRef.current = true
       setSaving(true)
@@ -131,6 +134,7 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
           setConflict({
             serverData: migrateState(conflictPayload.data),
             serverUpdatedAt: conflictPayload.updatedAt,
+            updatedByUsername: conflictPayload.updatedByUsername,
           })
           setPendingSync(true)
           setLastSaved(false)
@@ -157,7 +161,7 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
         }
       }
     },
-    [eventSlug, persistLocal],
+    [eventSlug, persistLocal, profileId],
   )
 
   useEffect(() => {
@@ -174,7 +178,16 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
       dirtyRef.current = false
       baseUpdatedAtRef.current = null
 
-      const local = await readLocalEventState(userId, eventSlug)
+      if (!profileId) {
+        skipSaveRef.current = true
+        setState(EMPTY_STATE)
+        setLastSaved(true)
+        setPendingSync(false)
+        setLoading(false)
+        return
+      }
+
+      const local = await readLocalEventState(profileId, eventSlug)
 
       try {
         let payload = await api.getEventState(eventSlug)
@@ -210,7 +223,7 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
         setLastSaved(true)
         setPendingSync(false)
         await writeLocalEventState({
-          userId,
+          profileId,
           eventSlug,
           data,
           baseUpdatedAt: updatedAt,
@@ -239,7 +252,7 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
     return () => {
       cancelled = true
     }
-  }, [eventSlug, userId])
+  }, [eventSlug, profileId])
 
   const reloadFromServer = useCallback(async () => {
     try {
@@ -411,9 +424,9 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
       const neededBy = { ...prev.neededBy }
       if (needed) {
         neededBy[cardId] =
-          prev.accounts.length > 0
-            ? prev.accounts.map((a) => a.id)
-            : [SOLO_ACCOUNT_ID]
+          prev.favoriteFolders.length > 0
+            ? prev.favoriteFolders.map((a) => a.id)
+            : [SOLO_FOLDER_ID]
       } else delete neededBy[cardId]
       return { ...prev, neededBy }
     })
@@ -426,76 +439,76 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
       const isOn = current.length > 0
       if (isOn) {
         delete neededBy[cardId]
-      } else if (prev.accounts.length === 0) {
-        neededBy[cardId] = [SOLO_ACCOUNT_ID]
-      } else if (prev.accounts.length === 1) {
-        neededBy[cardId] = [prev.accounts[0]!.id]
+      } else if (prev.favoriteFolders.length === 0) {
+        neededBy[cardId] = [SOLO_FOLDER_ID]
+      } else if (prev.favoriteFolders.length === 1) {
+        neededBy[cardId] = [prev.favoriteFolders[0]!.id]
       } else {
-        neededBy[cardId] = prev.accounts.map((a) => a.id)
+        neededBy[cardId] = prev.favoriteFolders.map((a) => a.id)
       }
       return { ...prev, neededBy }
     })
   }, [])
 
-  const renameAccount = useCallback((accountId: string, name: string) => {
+  const renameFavoriteFolder = useCallback((folderId: string, name: string) => {
     setState((prev) => ({
       ...prev,
-      accounts: prev.accounts.map((a) =>
-        a.id === accountId ? { ...a, name } : a,
+      favoriteFolders: prev.favoriteFolders.map((a) =>
+        a.id === folderId ? { ...a, name } : a,
       ),
     }))
   }, [])
 
-  const addAccount = useCallback((name?: string) => {
+  const addFavoriteFolder = useCallback((name?: string) => {
     setState((prev) => {
-      const n = prev.accounts.length + 1
-      const account: Account = {
+      const n = prev.favoriteFolders.length + 1
+      const folder: FavoriteFolder = {
         id: `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
-        name: (name ?? `Акк ${n}`).trim() || `Акк ${n}`,
+        name: (name ?? `Папка ${n}`).trim() || `Папка ${n}`,
       }
-      // solo-метки → новый единственный/первый аккаунт
+      // solo-метки → новая единственная/первая папка
       let neededBy = prev.neededBy
-      if (prev.accounts.length === 0) {
+      if (prev.favoriteFolders.length === 0) {
         neededBy = {}
         for (const [cardId, ids] of Object.entries(prev.neededBy)) {
-          if (ids.includes(SOLO_ACCOUNT_ID) || ids.length > 0) {
-            neededBy[cardId] = [account.id]
+          if (ids.includes(SOLO_FOLDER_ID) || ids.length > 0) {
+            neededBy[cardId] = [folder.id]
           }
         }
       }
-      return { ...prev, accounts: [...prev.accounts, account], neededBy }
+      return { ...prev, favoriteFolders: [...prev.favoriteFolders, folder], neededBy }
     })
   }, [])
 
-  const removeAccount = useCallback((accountId: string) => {
+  const removeFavoriteFolder = useCallback((folderId: string) => {
     setState((prev) => {
-      const accounts = prev.accounts.filter((a) => a.id !== accountId)
+      const favoriteFolders = prev.favoriteFolders.filter((a) => a.id !== folderId)
       const neededBy: Record<string, string[]> = {}
       for (const [cardId, ids] of Object.entries(prev.neededBy)) {
-        const next = ids.filter((id) => id !== accountId)
-        if (accounts.length === 0) {
-          if (next.length > 0 || ids.length > 0) neededBy[cardId] = [SOLO_ACCOUNT_ID]
+        const next = ids.filter((id) => id !== folderId)
+        if (favoriteFolders.length === 0) {
+          if (next.length > 0 || ids.length > 0) neededBy[cardId] = [SOLO_FOLDER_ID]
         } else if (next.length) {
           neededBy[cardId] = next
         }
       }
-      return { ...prev, accounts, neededBy }
+      return { ...prev, favoriteFolders, neededBy }
     })
   }, [])
 
-  const setAccounts = useCallback((accounts: Account[]) => {
+  const setFavoriteFolders = useCallback((favoriteFolders: FavoriteFolder[]) => {
     setState((prev) => {
-      const ids = new Set(accounts.map((a) => a.id))
+      const ids = new Set(favoriteFolders.map((a) => a.id))
       const neededBy: Record<string, string[]> = {}
       for (const [cardId, list] of Object.entries(prev.neededBy)) {
-        if (accounts.length === 0) {
-          if (list.length) neededBy[cardId] = [SOLO_ACCOUNT_ID]
+        if (favoriteFolders.length === 0) {
+          if (list.length) neededBy[cardId] = [SOLO_FOLDER_ID]
           continue
         }
         const next = list.filter((id) => ids.has(id))
         if (next.length) neededBy[cardId] = next
       }
-      return { ...prev, accounts, neededBy }
+      return { ...prev, favoriteFolders, neededBy }
     })
   }, [])
 
@@ -840,10 +853,11 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
     toggleNeeded,
     setNeededForAll,
     toggleStar,
-    renameAccount,
-    addAccount,
-    removeAccount,
-    setAccounts,
+    renameFavoriteFolder,
+    addFavoriteFolder,
+    removeFavoriteFolder,
+    setFavoriteFolders,
+    needsProfile: !profileId,
     addTrade,
     removeTrade,
     addPotentialTrade,
@@ -864,5 +878,3 @@ export function useAppState(eventSlug: string, cards: Card[], userId: string) {
     stats,
   }
 }
-
-export type { Account }

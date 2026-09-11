@@ -32,7 +32,7 @@ export function emptyAppStateLike(state: AppState): boolean {
   return (
     Object.keys(state.owned).length === 0 &&
     Object.keys(state.neededBy).length === 0 &&
-    state.accounts.length === 0 &&
+    state.favoriteFolders.length === 0 &&
     state.trades.length === 0 &&
     state.potentialTrades.length === 0
   )

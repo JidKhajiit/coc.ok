@@ -102,6 +102,12 @@ function AdminShell() {
             Карточные эвенты
           </NavLink>
         )}
+        <NavLink
+          to="/admin-panel/claims"
+          className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+        >
+          Заявки на профили
+        </NavLink>
       </nav>
 
       <main className="main admin-main">
@@ -1004,4 +1010,95 @@ export function AdminBackupTab() {
 
 export function AdminPage() {
   return <AdminShell />
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Profile Claims Queue
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function AdminClaimsTab() {
+  const [claims, setClaims] = useState<api.ProfileClaim[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { claims: rows } = await api.listProfileClaimsQueue()
+      setClaims(rows)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const resolve = async (claimId: string, action: 'approve' | 'reject') => {
+    setBusyId(claimId)
+    setError(null)
+    try {
+      await api.resolveProfileClaim(claimId, action)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (loading) return <div className="admin-loading">Загрузка…</div>
+
+  return (
+    <div className="admin-claims">
+      {error && <p className="admin-error">{error}</p>}
+      {claims.length === 0 ? (
+        <p className="panel__status">Нет ожидающих заявок</p>
+      ) : (
+        <ul className="admin-claims__list">
+          {claims.map((claim) => (
+            <li key={claim.id} className="admin-claims__item">
+              <div className="admin-claims__meta">
+                <strong>{claim.nickname}</strong>
+                <span>UID: {claim.gameUid}</span>
+                <span>
+                  Заявитель: {claim.claimantUsername}
+                </span>
+                <span>{new Date(claim.createdAt).toLocaleString()}</span>
+                {claim.message && <p>{claim.message}</p>}
+                {claim.screenshotPath && (
+                  <a href={claim.screenshotPath} target="_blank" rel="noreferrer">
+                    Скриншот
+                  </a>
+                )}
+              </div>
+              <div className="admin-claims__actions">
+                <button
+                  type="button"
+                  className="btn btn--primary btn--sm"
+                  disabled={busyId === claim.id}
+                  onClick={() => void resolve(claim.id, 'approve')}
+                >
+                  Одобрить
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--outline btn--sm"
+                  disabled={busyId === claim.id}
+                  onClick={() => void resolve(claim.id, 'reject')}
+                >
+                  Отклонить
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }

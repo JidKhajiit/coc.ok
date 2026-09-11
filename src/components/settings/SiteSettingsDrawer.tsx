@@ -2,25 +2,28 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { Link } from 'react-router-dom'
 import { LanguagePicker, SettingsDrawer, SettingsSection } from './SettingsDrawer'
 import { useI18n, type Locale } from '../../i18n'
-import { ApiError, type DeviceAccount } from '../../api/client'
+import { ApiError, type DeviceAccount, type GameProfile, type ProfileMember } from '../../api/client'
 import { PasswordField } from '../PasswordField'
 import { UserAvatar } from '../UserAvatar'
+import type { useProfiles } from '../../hooks/useProfiles'
+
+type ProfilesApi = ReturnType<typeof useProfiles>
 
 type Props = {
   open: boolean
   onClose: () => void
   username?: string
-  uid?: string | null
   avatarUrl?: string | null
   userId?: string
   permissions?: string[]
   accounts?: DeviceAccount[]
+  profiles?: ProfilesApi
   onLogout?: () => Promise<unknown>
-  onSetUid?: (uid: string) => Promise<unknown>
   onUploadAvatar?: (file: File) => Promise<unknown>
   onSwitchAccount?: (userId: string) => Promise<unknown>
   onRemoveAccount?: (userId: string) => Promise<unknown>
   onAddAccount?: (login: string, password: string) => Promise<unknown>
+  onActiveProfileChange?: (activeProfileId: string | null) => void
   locale: Locale
   onLocaleChange: (locale: Locale) => void
 }
@@ -29,17 +32,17 @@ export function SiteSettingsDrawer({
   open,
   onClose,
   username,
-  uid = null,
   avatarUrl = null,
   userId,
   permissions = [],
   accounts = [],
+  profiles,
   onLogout,
-  onSetUid,
   onUploadAvatar,
   onSwitchAccount,
   onRemoveAccount,
   onAddAccount,
+  onActiveProfileChange,
   locale,
   onLocaleChange,
 }: Props) {
@@ -47,63 +50,52 @@ export function SiteSettingsDrawer({
   const signedIn = Boolean(username && onLogout)
   const isAdmin = permissions.includes('admin:access')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [draftUid, setDraftUid] = useState('')
-  const [uidMsg, setUidMsg] = useState('')
-  const [uidError, setUidError] = useState('')
-  const [savingUid, setSavingUid] = useState(false)
+  const claimFileRef = useRef<HTMLInputElement>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [addLogin, setAddLogin] = useState('')
   const [addPassword, setAddPassword] = useState('')
   const [addError, setAddError] = useState('')
   const [adding, setAdding] = useState(false)
   const [accountBusyId, setAccountBusyId] = useState<string | null>(null)
-  const [copiedUidId, setCopiedUidId] = useState<string | null>(null)
   const [avatarBusy, setAvatarBusy] = useState(false)
   const [avatarError, setAvatarError] = useState('')
 
+  const [newGameUid, setNewGameUid] = useState('')
+  const [newNickname, setNewNickname] = useState('')
+  const [profileBusy, setProfileBusy] = useState(false)
+  const [profileError, setProfileError] = useState('')
+  const [profileMsg, setProfileMsg] = useState('')
+  const [nicknameDrafts, setNicknameDrafts] = useState<Record<string, string>>({})
+  const [adminsFor, setAdminsFor] = useState<string | null>(null)
+  const [members, setMembers] = useState<ProfileMember[]>([])
+  const [adminUsername, setAdminUsername] = useState('')
+  const [claimTarget, setClaimTarget] = useState<{ profileId: string; gameUid: string } | null>(null)
+  const [claimMessage, setClaimMessage] = useState('')
+  const [claimFile, setClaimFile] = useState<File | null>(null)
+
   useEffect(() => {
     if (!open) return
-    setDraftUid('')
-    setUidMsg('')
-    setUidError('')
     setAddOpen(false)
     setAddLogin('')
     setAddPassword('')
     setAddError('')
     setAccountBusyId(null)
-    setCopiedUidId(null)
     setAvatarBusy(false)
     setAvatarError('')
-  }, [open])
-
-  const copyUid = async (accountId: string, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopiedUidId(accountId)
-      window.setTimeout(() => setCopiedUidId((prev) => (prev === accountId ? null : prev)), 1500)
-    } catch {
-      // ignore
+    setNewGameUid('')
+    setNewNickname('')
+    setProfileError('')
+    setProfileMsg('')
+    setAdminsFor(null)
+    setMembers([])
+    setAdminUsername('')
+    setClaimTarget(null)
+    setClaimMessage('')
+    setClaimFile(null)
+    if (profiles) {
+      setNicknameDrafts(Object.fromEntries(profiles.profiles.map((p) => [p.id, p.nickname])))
     }
-  }
-
-  const handleSetUid = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!onSetUid) return
-    const value = draftUid.trim()
-    if (!value) return
-    setSavingUid(true)
-    setUidMsg('')
-    setUidError('')
-    try {
-      await onSetUid(value)
-      setDraftUid('')
-      setUidMsg(t('settings.uidSaved'))
-    } catch (err) {
-      setUidError(err instanceof ApiError || err instanceof Error ? err.message : t('settings.uidSaveFail'))
-    } finally {
-      setSavingUid(false)
-    }
-  }
+  }, [open, profiles?.profiles])
 
   const handleAddAccount = async (e: FormEvent) => {
     e.preventDefault()
@@ -184,12 +176,150 @@ export function SiteSettingsDrawer({
     }
   }
 
+  const syncActive = (activeProfileId: string | null) => {
+    onActiveProfileChange?.(activeProfileId)
+  }
+
+  const handleCreateProfile = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!profiles) return
+    setProfileBusy(true)
+    setProfileError('')
+    setProfileMsg('')
+    setClaimTarget(null)
+    try {
+      const result = await profiles.create(newGameUid.trim(), newNickname.trim())
+      setNewGameUid('')
+      setNewNickname('')
+      setProfileMsg(t('profiles.created'))
+      syncActive(result.activeProfileId)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const body = err.body as { claimable?: boolean; profileId?: string } | null
+        if (body?.claimable && body.profileId) {
+          setClaimTarget({ profileId: body.profileId, gameUid: newGameUid.trim() })
+          setProfileError(t('profiles.claimable'))
+          return
+        }
+      }
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  const handleRenameProfile = async (profile: GameProfile) => {
+    if (!profiles) return
+    const nickname = (nicknameDrafts[profile.id] ?? profile.nickname).trim()
+    if (!nickname || nickname === profile.nickname) return
+    setProfileBusy(true)
+    setProfileError('')
+    try {
+      await profiles.update(profile.id, nickname)
+      setProfileMsg(t('profiles.renamed'))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  const handleDeleteProfile = async (profile: GameProfile) => {
+    if (!profiles) return
+    if (!window.confirm(t('profiles.deleteConfirm', { nickname: profile.nickname }))) return
+    setProfileBusy(true)
+    setProfileError('')
+    try {
+      const result = await profiles.remove(profile.id)
+      syncActive(result.activeProfileId)
+      setProfileMsg(t('profiles.deleted'))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  const handleSetActive = async (profileId: string) => {
+    if (!profiles || profileId === profiles.activeProfileId) return
+    setProfileBusy(true)
+    setProfileError('')
+    try {
+      const result = await profiles.setActive(profileId)
+      syncActive(result.activeProfileId)
+      onClose()
+      window.location.reload()
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+      setProfileBusy(false)
+    }
+  }
+
+  const openAdmins = async (profileId: string) => {
+    if (!profiles) return
+    setAdminsFor(profileId)
+    setAdminUsername('')
+    setProfileError('')
+    try {
+      setMembers(await profiles.listAdmins(profileId))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    }
+  }
+
+  const handleAddAdmin = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!profiles || !adminsFor) return
+    setProfileBusy(true)
+    setProfileError('')
+    try {
+      await profiles.addAdmin(adminsFor, adminUsername.trim())
+      setAdminUsername('')
+      setMembers(await profiles.listAdmins(adminsFor))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  const handleRemoveAdmin = async (userIdToRemove: string) => {
+    if (!profiles || !adminsFor) return
+    setProfileBusy(true)
+    try {
+      await profiles.removeAdmin(adminsFor, userIdToRemove)
+      setMembers(await profiles.listAdmins(adminsFor))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  const handleClaim = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!profiles || !claimTarget || !claimFile) return
+    setProfileBusy(true)
+    setProfileError('')
+    try {
+      await profiles.claim(claimTarget.profileId, claimFile, claimMessage)
+      setClaimTarget(null)
+      setClaimFile(null)
+      setClaimMessage('')
+      setProfileMsg(t('profiles.claimSubmitted'))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
   const showAccountSwitcher = signedIn
   const displayAccounts: DeviceAccount[] =
     accounts.length > 0
       ? accounts
       : username && userId
-        ? [{ id: userId, username, uid, avatarUrl, active: true }]
+        ? [{ id: userId, username, avatarUrl, active: true }]
         : []
 
   return (
@@ -262,17 +392,6 @@ export function SiteSettingsDrawer({
                         >
                           <strong>{account.username}</strong>
                         </button>
-                        {account.uid && (
-                          <button
-                            type="button"
-                            className={`settings-device-accounts__uid${copiedUidId === account.id ? ' is-copied' : ''}`}
-                            title={t('cozyFarm.copyUid')}
-                            aria-label={t('cozyFarm.copyUid')}
-                            onClick={() => void copyUid(account.id, account.uid!)}
-                          >
-                            {copiedUidId === account.id ? t('common.copied') : account.uid}
-                          </button>
-                        )}
                       </div>
                       {active && (
                         <span className="settings-device-accounts__badge">
@@ -363,34 +482,181 @@ export function SiteSettingsDrawer({
         </SettingsSection>
       )}
 
-      {signedIn && !uid && onSetUid && (
-        <SettingsSection title={t('settings.uidTitle')} hint={t('settings.uidHint')}>
-          <form className="settings-uid-form" onSubmit={(e) => void handleSetUid(e)}>
-            <div className="settings-uid-form__row">
+      {signedIn && profiles && (
+        <SettingsSection title={t('profiles.title')} tip={t('profiles.hint')} tipAriaLabel={t('profiles.hintAria')}>
+          <ul className="settings-profiles">
+            {profiles.profiles.length === 0 && (
+              <li className="settings-profiles__empty">{t('profiles.empty')}</li>
+            )}
+            {profiles.profiles.map((profile) => {
+              const active = profile.id === profiles.activeProfileId
+              return (
+                <li key={profile.id} className={`settings-profiles__row${active ? ' is-active' : ''}`}>
+                  <div className="settings-profiles__main">
+                    <input
+                      className="input"
+                      value={nicknameDrafts[profile.id] ?? profile.nickname}
+                      onChange={(e) =>
+                        setNicknameDrafts((prev) => ({ ...prev, [profile.id]: e.target.value }))
+                      }
+                      onBlur={() => void handleRenameProfile(profile)}
+                      aria-label={t('profiles.nickname')}
+                    />
+                    <span className="settings-profiles__uid">{profile.gameUid}</span>
+                    {active && (
+                      <span className="settings-device-accounts__badge">{t('profiles.active')}</span>
+                    )}
+                  </div>
+                  <div className="settings-profiles__actions">
+                    {!active && (
+                      <button
+                        type="button"
+                        className="btn btn--outline btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void handleSetActive(profile.id)}
+                      >
+                        {t('profiles.setActive')}
+                      </button>
+                    )}
+                    {(profile.role === 'owner' || profile.role === 'admin') && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void openAdmins(profile.id)}
+                      >
+                        {t('profiles.admins')}
+                      </button>
+                    )}
+                    {profile.role === 'owner' && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void handleDeleteProfile(profile)}
+                      >
+                        {t('common.delete')}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          <form className="settings-profiles__create" onSubmit={(e) => void handleCreateProfile(e)}>
+            <label className="settings-add-account__field">
+              <span>{t('profiles.gameUid')}</span>
               <input
-                className="input settings-uid-form__input"
-                type="text"
-                value={draftUid}
-                onChange={(e) => setDraftUid(e.target.value)}
+                className="input"
+                value={newGameUid}
+                onChange={(e) => setNewGameUid(e.target.value)}
                 required
                 minLength={1}
                 maxLength={64}
                 pattern="[a-zA-Z0-9_-]+"
-                placeholder={t('auth.uidPlaceholder')}
                 autoComplete="off"
-                aria-label={t('auth.uid')}
               />
-              <button
-                type="submit"
-                className="btn btn--primary btn--sm"
-                disabled={savingUid || !draftUid.trim()}
-              >
-                {savingUid ? t('auth.submitting') : t('settings.uidSave')}
-              </button>
-            </div>
-            {uidMsg && <p className="settings-feedback">{uidMsg}</p>}
-            {uidError && <p className="settings-feedback settings-feedback--error">{uidError}</p>}
+            </label>
+            <label className="settings-add-account__field">
+              <span>{t('profiles.nickname')}</span>
+              <input
+                className="input"
+                value={newNickname}
+                onChange={(e) => setNewNickname(e.target.value)}
+                required
+                minLength={1}
+                maxLength={64}
+                autoComplete="off"
+              />
+            </label>
+            <button
+              type="submit"
+              className="btn btn--primary btn--sm"
+              disabled={profileBusy || !newGameUid.trim() || !newNickname.trim()}
+            >
+              {profileBusy ? t('auth.submitting') : t('profiles.add')}
+            </button>
           </form>
+
+          {claimTarget && (
+            <form className="settings-profiles__claim" onSubmit={(e) => void handleClaim(e)}>
+              <p className="settings-feedback">{t('profiles.claimHint', { uid: claimTarget.gameUid })}</p>
+              <label className="settings-add-account__field">
+                <span>{t('profiles.claimScreenshot')}</span>
+                <input
+                  ref={claimFileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  required
+                  onChange={(e) => setClaimFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <label className="settings-add-account__field">
+                <span>{t('profiles.claimMessage')}</span>
+                <textarea
+                  className="input"
+                  value={claimMessage}
+                  onChange={(e) => setClaimMessage(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                />
+              </label>
+              <button type="submit" className="btn btn--primary btn--sm" disabled={profileBusy || !claimFile}>
+                {t('profiles.submitClaim')}
+              </button>
+            </form>
+          )}
+
+          {adminsFor && (
+            <div className="settings-profiles__admins">
+              <h4>{t('profiles.adminsTitle')}</h4>
+              <ul className="settings-profiles__admin-list">
+                {members.map((m) => (
+                  <li key={m.userId}>
+                    <span>
+                      {m.username} ({m.role})
+                    </span>
+                    {m.role !== 'owner' && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void handleRemoveAdmin(m.userId)}
+                      >
+                        {t('common.delete')}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <form className="settings-profiles__admin-add" onSubmit={(e) => void handleAddAdmin(e)}>
+                <input
+                  className="input"
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.target.value)}
+                  placeholder={t('profiles.adminUsername')}
+                  required
+                  minLength={3}
+                  maxLength={32}
+                  pattern="[a-zA-Z0-9_-]+"
+                />
+                <button type="submit" className="btn btn--primary btn--sm" disabled={profileBusy}>
+                  {t('profiles.addAdmin')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setAdminsFor(null)}
+                >
+                  {t('common.cancel')}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {profileMsg && <p className="settings-feedback">{profileMsg}</p>}
+          {profileError && <p className="settings-feedback settings-feedback--error">{profileError}</p>}
         </SettingsSection>
       )}
     </SettingsDrawer>

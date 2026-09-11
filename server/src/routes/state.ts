@@ -2,16 +2,16 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import type { Db } from '../db/index.js'
-import { userStates } from '../db/schema.js'
+import { profileStates, users } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
 import { migrateState } from '../../../shared/migrateState.js'
 import { EMPTY_STATE } from '../../../shared/types.js'
-import type { AppState } from '../../../shared/types.js'
+import { resolveActiveProfile } from '../lib/profiles.js'
 
 const MAX_BODY_BYTES = 1_048_576
 
-const accountSchema = z.object({
+const favoriteFolderSchema = z.object({
   id: z.string().min(1).max(64),
   name: z.string().min(1).max(128),
 })
@@ -38,11 +38,21 @@ const potentialTradeSchema = z.object({
 const appStateSchema = z.object({
   owned: z.record(z.string(), z.number().int().min(0).max(9999)),
   neededBy: z.record(z.string(), z.array(z.string().min(1).max(64))),
-  accounts: z.array(accountSchema).max(50),
+  favoriteFolders: z.array(favoriteFolderSchema).max(50).optional(),
+  accounts: z.array(favoriteFolderSchema).max(50).optional(),
   trades: z.array(tradeSchema).max(10_000),
   potentialTrades: z.array(potentialTradeSchema).max(1000),
   locale: z.enum(['ru', 'en']).optional(),
 })
+
+async function resolveUserActiveProfile(db: Db, userId: string) {
+  const [u] = await db
+    .select({ activeProfileId: users.activeProfileId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  return resolveActiveProfile(db, userId, u?.activeProfileId)
+}
 
 export function createStateRoutes(db: Db) {
   const app = new Hono<{ Variables: AppVariables }>()
@@ -51,10 +61,15 @@ export function createStateRoutes(db: Db) {
 
   app.get('/', async (c) => {
     const user = c.get('user')!
+    const profile = await resolveUserActiveProfile(db, user.id)
+    if (!profile) {
+      return c.json({ data: migrateState(EMPTY_STATE) })
+    }
+
     const rows = await db
-      .select({ data: userStates.data })
-      .from(userStates)
-      .where(eq(userStates.userId, user.id))
+      .select({ data: profileStates.data })
+      .from(profileStates)
+      .where(eq(profileStates.profileId, profile.id))
       .limit(1)
 
     const data = rows[0]?.data ?? EMPTY_STATE
@@ -79,14 +94,28 @@ export function createStateRoutes(db: Db) {
     }
 
     const user = c.get('user')!
-    const migrated = migrateState(parsed.data as AppState)
+    const profile = await resolveUserActiveProfile(db, user.id)
+    if (!profile) {
+      return c.json({ error: 'Create a game profile before saving state' }, 400)
+    }
+
+    const migrated = migrateState(parsed.data)
 
     await db
-      .insert(userStates)
-      .values({ userId: user.id, data: migrated, updatedAt: new Date() })
+      .insert(profileStates)
+      .values({
+        profileId: profile.id,
+        data: migrated,
+        updatedAt: new Date(),
+        updatedByUserId: user.id,
+      })
       .onConflictDoUpdate({
-        target: userStates.userId,
-        set: { data: migrated, updatedAt: new Date() },
+        target: profileStates.profileId,
+        set: {
+          data: migrated,
+          updatedAt: new Date(),
+          updatedByUserId: user.id,
+        },
       })
 
     return c.json({ data: migrated })

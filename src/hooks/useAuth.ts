@@ -55,31 +55,15 @@ export function useAuth() {
     }
   }, [])
 
-  const register = useCallback(async (username: string, uid: string, email: string, password: string) => {
+  const register = useCallback(async (username: string, email: string, password: string) => {
     setError(null)
     setInfo(null)
     try {
-      const result = await api.register(username, uid, email, password)
+      const result = await api.register(username, email, password)
       setInfo(result.message)
       return result
     } catch (err) {
       const message = err instanceof api.ApiError ? err.message : 'Registration failed'
-      setError(message)
-      throw err
-    }
-  }, [])
-
-  const setUid = useCallback(async (uid: string) => {
-    setError(null)
-    try {
-      const updated = await api.setUid(uid)
-      setUser(updated)
-      setAccounts((prev) =>
-        prev.map((a) => (a.id === updated.id ? { ...a, uid: updated.uid } : a)),
-      )
-      return updated
-    } catch (err) {
-      const message = err instanceof api.ApiError ? err.message : 'Failed to set UID'
       setError(message)
       throw err
     }
@@ -164,6 +148,10 @@ export function useAuth() {
     }
   }, [])
 
+  const patchActiveProfileId = useCallback((activeProfileId: string | null) => {
+    setUser((prev) => (prev ? { ...prev, activeProfileId } : prev))
+  }, [])
+
   return {
     status,
     user,
@@ -172,7 +160,6 @@ export function useAuth() {
     info,
     login,
     register,
-    setUid,
     uploadAvatar,
     forgotPassword,
     resendVerification,
@@ -182,5 +169,6 @@ export function useAuth() {
     refresh,
     setError,
     setInfo,
+    patchActiveProfileId,
   }
 }

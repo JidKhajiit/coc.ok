@@ -92,6 +92,13 @@
       "when": 1757550000000,
       "tag": "0012_share_privacy_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1757560000000,
+      "tag": "0013_game_profiles",
+      "breakpoints": true
     }
   ]
 }

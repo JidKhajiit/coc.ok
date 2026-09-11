@@ -1,12 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { Account } from '../types'
+import type { FavoriteFolder } from '../types'
 import { useI18n } from '../i18n'
 
 interface Props {
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   neededAccountIds: string[]
-  onToggle: (accountId: string) => void
+  onToggle: (folderId: string) => void
   onToggleAll?: () => void
   onToggleStar?: () => void
 }
@@ -17,13 +17,14 @@ interface MenuPos {
 }
 
 export function AccountNeedToggles({
-  accounts,
+  favoriteFolders,
   neededAccountIds,
   onToggle,
   onToggleAll,
   onToggleStar,
 }: Props) {
   const { t } = useI18n()
+  const accounts = favoriteFolders
   const multi = accounts.length > 1
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<MenuPos | null>(null)

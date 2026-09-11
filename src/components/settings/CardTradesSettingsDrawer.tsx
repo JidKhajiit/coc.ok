@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as api from '../../api/client'
-import type { Account } from '../../types'
+import type { FavoriteFolder } from '../../types'
 import { useI18n } from '../../i18n'
 import { BRAND_NAME } from '../../brand'
 import { collectionPath } from '../../lib/events'
@@ -8,11 +8,11 @@ import { SettingsAccordion, SettingsDrawer } from './SettingsDrawer'
 
 type Props = {
   open: boolean
-  uid: string | null
+  hasActiveProfile: boolean
   eventSlug: string
   eventName: string
   onClose: () => void
-  accounts: Account[]
+  favoriteFolders: FavoriteFolder[]
   onAdd: () => void
   onRemove: (id: string) => void
   onRename: (id: string, name: string) => void
@@ -22,15 +22,15 @@ type Props = {
   onImportText: (text: string) => Promise<void>
 }
 
-type AccordionId = 'accounts' | 'share' | 'backup' | null
+type AccordionId = 'favoriteFolders' | 'share' | 'backup' | null
 
 export function CardTradesSettingsDrawer({
   open,
-  uid,
+  hasActiveProfile,
   eventSlug,
   eventName,
   onClose,
-  accounts,
+  favoriteFolders,
   onAdd,
   onRemove,
   onRename,
@@ -40,7 +40,7 @@ export function CardTradesSettingsDrawer({
   onImportText,
 }: Props) {
   const { t } = useI18n()
-  const [expanded, setExpanded] = useState<AccordionId>('accounts')
+  const [expanded, setExpanded] = useState<AccordionId>('favoriteFolders')
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [importMsg, setImportMsg] = useState('')
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -53,13 +53,13 @@ export function CardTradesSettingsDrawer({
 
   useEffect(() => {
     if (!open) return
-    setDrafts(Object.fromEntries(accounts.map((a) => [a.id, a.name])))
+    setDrafts(Object.fromEntries(favoriteFolders.map((a) => [a.id, a.name])))
     setImportMsg('')
     setPasteOpen(false)
     setPasteText('')
     setShareMsg('')
-    setExpanded('accounts')
-    if (!uid) {
+    setExpanded('favoriteFolders')
+    if (!hasActiveProfile) {
       setShareEnabled(false)
       setShareSlug('')
       setAcceptTradeOffers(true)
@@ -70,7 +70,7 @@ export function CardTradesSettingsDrawer({
       setShareSlug(share.slug)
       setAcceptTradeOffers(share.acceptTradeOffers)
     })
-  }, [open, accounts, uid, eventSlug])
+  }, [open, favoriteFolders, hasActiveProfile, eventSlug])
 
   const toggle = (id: Exclude<AccordionId, null>) => {
     setExpanded((prev) => (prev === id ? null : id))
@@ -88,16 +88,16 @@ export function CardTradesSettingsDrawer({
       subtitle={BRAND_NAME}
     >
       <SettingsAccordion
-        id="accounts"
-        title={t('settings.accounts')}
-        open={expanded === 'accounts'}
-        onToggle={() => toggle('accounts')}
+        id="favoriteFolders"
+        title={t('settings.favoriteFolders')}
+        open={expanded === 'favoriteFolders'}
+        onToggle={() => toggle('favoriteFolders')}
       >
         <ul className="settings-accounts">
-          {accounts.length === 0 && (
-            <li className="settings-accounts__empty">{t('settings.accountsEmpty')}</li>
+          {favoriteFolders.length === 0 && (
+            <li className="settings-accounts__empty">{t('settings.favoriteFoldersEmpty')}</li>
           )}
-          {accounts.map((a, i) => (
+          {favoriteFolders.map((a, i) => (
             <li key={a.id} className="settings-accounts__row">
               <span className="settings-accounts__idx">{i + 1}</span>
               <input
@@ -107,10 +107,10 @@ export function CardTradesSettingsDrawer({
                 onBlur={() => {
                   const name =
                     (drafts[a.id] ?? a.name).trim() ||
-                    t('settings.accountPlaceholder', { n: i + 1 })
+                    t('settings.favoriteFolderPlaceholder', { n: i + 1 })
                   onRename(a.id, name)
                 }}
-                placeholder={t('settings.accountPlaceholder', { n: i + 1 })}
+                placeholder={t('settings.favoriteFolderPlaceholder', { n: i + 1 })}
               />
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => onRemove(a.id)}>
                 {t('common.delete')}
@@ -119,7 +119,7 @@ export function CardTradesSettingsDrawer({
           ))}
         </ul>
         <button type="button" className="btn btn--primary btn--sm" onClick={onAdd}>
-          {t('settings.addAccount')}
+          {t('settings.addFavoriteFolder')}
         </button>
       </SettingsAccordion>
 
@@ -129,8 +129,8 @@ export function CardTradesSettingsDrawer({
         open={expanded === 'share'}
         onToggle={() => toggle('share')}
       >
-        {!uid ? (
-          <p className="settings-feedback">{t('share.uidRequired')}</p>
+        {!hasActiveProfile ? (
+          <p className="settings-feedback">{t('share.profileRequired')}</p>
         ) : (
           <>
             <label className="settings-share__toggle">

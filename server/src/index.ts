@@ -9,6 +9,7 @@ import { loadEnv } from './env.js'
 import { createSessionMiddleware, cleanupExpiredSessions } from './middleware/session.js'
 import type { AppVariables } from './middleware/session.js'
 import { createAuthRoutes } from './routes/auth.js'
+import { createProfilesRoutes } from './routes/profiles.js'
 import { createCollectionsRoutes, createShareRoutes } from './routes/collections.js'
 import { createStateRoutes } from './routes/state.js'
 import { createAdminRoutes } from './routes/admin.js'
@@ -29,6 +30,7 @@ app.get('/api/health', (c) => c.json({ ok: true }))
 
 const api = new Hono<{ Variables: AppVariables }>()
 api.route('/auth', createAuthRoutes(db, env))
+api.route('/profiles', createProfilesRoutes(db, env))
 api.route('/state', createStateRoutes(db))
 api.route('/card-trades', createCardTradesRoutes(db))
 api.route('/card-trades/collections', createCollectionsRoutes(db))

@@ -21,7 +21,7 @@ const MAX_DEVICE_ACCOUNTS = 10
 export type SessionUser = {
   id: string
   username: string
-  uid: string | null
+  activeProfileId: string | null
   avatarUrl: string | null
   permissions: string[]
 }
@@ -29,7 +29,6 @@ export type SessionUser = {
 export type DeviceAccountSummary = {
   id: string
   username: string
-  uid: string | null
   avatarUrl: string | null
   active: boolean
 }
@@ -38,7 +37,7 @@ export function publicSessionUser(user: SessionUser) {
   return {
     id: user.id,
     username: user.username,
-    uid: user.uid,
+    activeProfileId: user.activeProfileId,
     avatarUrl: user.avatarUrl,
     permissions: user.permissions,
   }
@@ -79,7 +78,7 @@ export function createSessionMiddleware(db: Db, env: Env) {
           sessionId: sessions.id,
           userId: users.id,
           username: users.username,
-          uid: users.uid,
+          activeProfileId: users.activeProfileId,
           avatarUrl: users.avatarUrl,
           expiresAt: sessions.expiresAt,
         })
@@ -100,7 +99,7 @@ export function createSessionMiddleware(db: Db, env: Env) {
         user = {
           id: row.userId,
           username: row.username,
-          uid: row.uid,
+          activeProfileId: row.activeProfileId,
           avatarUrl: row.avatarUrl,
           permissions: permRows.map((p) => p.name),
         }
@@ -241,7 +240,6 @@ export async function listDeviceAccounts(
     .select({
       id: users.id,
       username: users.username,
-      uid: users.uid,
       avatarUrl: users.avatarUrl,
       expiresAt: sessions.expiresAt,
       lastUsedAt: deviceAccounts.lastUsedAt,
@@ -255,7 +253,6 @@ export async function listDeviceAccounts(
   return rows.map((row) => ({
     id: row.id,
     username: row.username,
-    uid: row.uid,
     avatarUrl: row.avatarUrl,
     active: activeUserId === row.id,
   }))
@@ -273,7 +270,7 @@ export async function switchDeviceAccount(
       sessionId: deviceAccounts.sessionId,
       userId: users.id,
       username: users.username,
-      uid: users.uid,
+      activeProfileId: users.activeProfileId,
       avatarUrl: users.avatarUrl,
       expiresAt: sessions.expiresAt,
     })
@@ -301,7 +298,7 @@ export async function switchDeviceAccount(
   return {
     id: row.userId,
     username: row.username,
-    uid: row.uid,
+    activeProfileId: row.activeProfileId,
     avatarUrl: row.avatarUrl,
     permissions: await loadUserPermissions(db, row.userId),
   }
