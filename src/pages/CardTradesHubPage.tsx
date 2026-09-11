@@ -34,8 +34,8 @@ function CardTradesHubContent() {
     let cancelled = false
     void api
       .getEventState('summer-party')
-      .then((data) => {
-        if (!cancelled) setOwned(data.owned)
+      .then((payload) => {
+        if (!cancelled) setOwned(payload.data.owned)
       })
       .catch(() => {
         if (!cancelled) setOwned({})

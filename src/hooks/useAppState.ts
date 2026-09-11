@@ -14,6 +14,7 @@ import { DAILY_TRADE_INITIATION_LIMIT, SOLO_ACCOUNT_ID } from '../types'
 import { normalizeLocale, type Locale } from '../i18n'
 import { isSameGameDay } from '../utils/gameDay'
 import * as api from '../api/client'
+import { readLocalEventState, writeLocalEventState } from '../lib/localStateStore'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
 
@@ -51,37 +52,182 @@ function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function useAppState(eventSlug: string, cards: Card[]) {
+export type StateConflict = {
+  serverData: AppState
+  serverUpdatedAt: string | null
+}
+
+export function useAppState(eventSlug: string, cards: Card[], userId: string) {
   const [state, setState] = useState<AppState>(EMPTY_STATE)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [lastSaved, setLastSaved] = useState(true)
+  const [pendingSync, setPendingSync] = useState(false)
+  const [conflict, setConflict] = useState<StateConflict | null>(null)
   const skipSaveRef = useRef(true)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const baseUpdatedAtRef = useRef<string | null>(null)
+  const dirtyRef = useRef(false)
+  const stateRef = useRef(state)
+  const syncInFlightRef = useRef(false)
+  const syncToServerRef = useRef<(snapshot: AppState, generation: number) => Promise<void>>(
+    async () => {},
+  )
+  const conflictRef = useRef<StateConflict | null>(null)
+  const editGenerationRef = useRef(0)
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
+  useEffect(() => {
+    conflictRef.current = conflict
+  }, [conflict])
+
+  const persistLocal = useCallback(
+    async (data: AppState, dirty: boolean) => {
+      await writeLocalEventState({
+        userId,
+        eventSlug,
+        data,
+        baseUpdatedAt: baseUpdatedAtRef.current,
+        localEditedAt: new Date().toISOString(),
+        dirty,
+      })
+    },
+    [userId, eventSlug],
+  )
+
+  const syncToServer = useCallback(
+    async (snapshot: AppState, generation: number) => {
+      if (syncInFlightRef.current) return
+      syncInFlightRef.current = true
+      setSaving(true)
+      let retryAfter = false
+      try {
+        const saved = await api.putEventState(eventSlug, snapshot, baseUpdatedAtRef.current)
+        const stillCurrent = editGenerationRef.current === generation
+        baseUpdatedAtRef.current = saved.updatedAt
+        if (stillCurrent) {
+          dirtyRef.current = false
+          skipSaveRef.current = true
+          setState(saved.data)
+          setLastSaved(true)
+          setPendingSync(false)
+          setConflict(null)
+          setSaveError(null)
+          await persistLocal(saved.data, false)
+        } else {
+          dirtyRef.current = true
+          setPendingSync(true)
+          setLastSaved(false)
+          await persistLocal(stateRef.current, true)
+          retryAfter = true
+        }
+      } catch (err) {
+        const conflictPayload = api.getConflictPayload(err)
+        if (conflictPayload) {
+          setConflict({
+            serverData: migrateState(conflictPayload.data),
+            serverUpdatedAt: conflictPayload.updatedAt,
+          })
+          setPendingSync(true)
+          setLastSaved(false)
+          setSaveError(null)
+          dirtyRef.current = true
+          await persistLocal(snapshot, true)
+          return
+        }
+
+        dirtyRef.current = true
+        setPendingSync(true)
+        setLastSaved(false)
+        setSaveError(err instanceof Error ? err.message : 'Failed to save data')
+        await persistLocal(snapshot, true)
+      } finally {
+        syncInFlightRef.current = false
+        setSaving(false)
+        if (retryAfter) {
+          queueMicrotask(() => {
+            if (dirtyRef.current && !syncInFlightRef.current && !conflictRef.current) {
+              void syncToServerRef.current(stateRef.current, editGenerationRef.current)
+            }
+          })
+        }
+      }
+    },
+    [eventSlug, persistLocal],
+  )
+
+  useEffect(() => {
+    syncToServerRef.current = syncToServer
+  }, [syncToServer])
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadFromServer() {
+    async function loadState() {
       setLoading(true)
       setSaveError(null)
+      setConflict(null)
+      dirtyRef.current = false
+      baseUpdatedAtRef.current = null
+
+      const local = await readLocalEventState(userId, eventSlug)
+
       try {
-        let data = await api.getEventState(eventSlug)
+        let payload = await api.getEventState(eventSlug)
+        let data = migrateState(payload.data)
+        let updatedAt = payload.updatedAt
 
         const legacy = loadLegacyLocalStorage(eventSlug)
-        if (legacy && isEmptyState(data) && !isEmptyState(legacy)) {
-          data = await api.putEventState(eventSlug, legacy)
+        if (legacy && isEmptyState(data) && !isEmptyState(legacy) && !local?.dirty) {
+          payload = await api.putEventState(eventSlug, legacy, updatedAt)
+          data = migrateState(payload.data)
+          updatedAt = payload.updatedAt
           clearLegacyLocalStorage(eventSlug)
         }
 
-        if (!cancelled) {
-          setState(data)
+        if (cancelled) return
+
+        if (local?.dirty) {
+          baseUpdatedAtRef.current = local.baseUpdatedAt
+          dirtyRef.current = true
           skipSaveRef.current = true
-          setLastSaved(true)
+          setState(migrateState(local.data))
+          setLastSaved(false)
+          setPendingSync(true)
+          setLoading(false)
+          void syncToServerRef.current(migrateState(local.data), editGenerationRef.current)
+          return
         }
+
+        baseUpdatedAtRef.current = updatedAt
+        dirtyRef.current = false
+        skipSaveRef.current = true
+        setState(data)
+        setLastSaved(true)
+        setPendingSync(false)
+        await writeLocalEventState({
+          userId,
+          eventSlug,
+          data,
+          baseUpdatedAt: updatedAt,
+          localEditedAt: new Date().toISOString(),
+          dirty: false,
+        })
       } catch (err) {
-        if (!cancelled) {
+        if (cancelled) return
+        if (local) {
+          baseUpdatedAtRef.current = local.baseUpdatedAt
+          dirtyRef.current = local.dirty
+          skipSaveRef.current = true
+          setState(migrateState(local.data))
+          setLastSaved(!local.dirty)
+          setPendingSync(local.dirty)
+          setSaveError(null)
+        } else {
           setSaveError(err instanceof Error ? err.message : 'Failed to load data')
         }
       } finally {
@@ -89,22 +235,55 @@ export function useAppState(eventSlug: string, cards: Card[]) {
       }
     }
 
-    void loadFromServer()
+    void loadState()
     return () => {
       cancelled = true
     }
-  }, [eventSlug])
+  }, [eventSlug, userId])
 
   const reloadFromServer = useCallback(async () => {
     try {
-      const data = await api.getEventState(eventSlug)
-      setState(data)
+      const payload = await api.getEventState(eventSlug)
+      const data = migrateState(payload.data)
+      baseUpdatedAtRef.current = payload.updatedAt
+      dirtyRef.current = false
       skipSaveRef.current = true
+      setState(data)
       setLastSaved(true)
+      setPendingSync(false)
+      setConflict(null)
+      setSaveError(null)
+      await persistLocal(data, false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to load data')
     }
-  }, [eventSlug])
+  }, [eventSlug, persistLocal])
+
+  const keepLocalChanges = useCallback(async () => {
+    if (!conflict) return
+    // Align base revision with server so the next PUT overwrites with local data.
+    baseUpdatedAtRef.current = conflict.serverUpdatedAt
+    setConflict(null)
+    dirtyRef.current = true
+    setPendingSync(true)
+    setLastSaved(false)
+    await persistLocal(stateRef.current, true)
+    await syncToServer(stateRef.current, editGenerationRef.current)
+  }, [conflict, persistLocal, syncToServer])
+
+  const discardLocalChanges = useCallback(async () => {
+    if (!conflict) return
+    const data = migrateState(conflict.serverData)
+    baseUpdatedAtRef.current = conflict.serverUpdatedAt
+    dirtyRef.current = false
+    skipSaveRef.current = true
+    setState(data)
+    setConflict(null)
+    setLastSaved(true)
+    setPendingSync(false)
+    setSaveError(null)
+    await persistLocal(data, false)
+  }, [conflict, persistLocal])
 
   useEffect(() => {
     if (loading) return
@@ -112,37 +291,40 @@ export function useAppState(eventSlug: string, cards: Card[]) {
       skipSaveRef.current = false
       return
     }
+    if (conflict) return
 
+    dirtyRef.current = true
     setLastSaved(false)
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    setPendingSync(true)
+    setSaveError(null)
+    const generation = ++editGenerationRef.current
+    void persistLocal(state, true)
 
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      setSaving(true)
-      const snapshot = state
-      void api
-        .putEventState(eventSlug, snapshot)
-        .then((saved) => {
-          setState((current) => {
-            // Ignore stale responses if the user edited while the request was in flight.
-            if (current !== snapshot) return current
-            skipSaveRef.current = true
-            return saved
-          })
-          setLastSaved(true)
-          setSaveError(null)
-        })
-        .catch((err) => {
-          setSaveError(err instanceof Error ? err.message : 'Failed to save data')
-        })
-        .finally(() => {
-          setSaving(false)
-        })
+      void syncToServer(state, generation)
     }, SAVE_DEBOUNCE_MS)
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [state, loading, eventSlug])
+  }, [state, loading, eventSlug, conflict, persistLocal, syncToServer])
+
+  useEffect(() => {
+    const flush = () => {
+      if (!dirtyRef.current || conflictRef.current || loading || syncInFlightRef.current) return
+      void syncToServerRef.current(stateRef.current, editGenerationRef.current)    }
+    const onOnline = () => flush()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') flush()
+    }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [loading])
 
   const reservedByCard = useMemo(() => {
     const map: Record<string, number> = {}
@@ -645,6 +827,10 @@ export function useAppState(eventSlug: string, cards: Card[]) {
     saving,
     saveError,
     lastSaved,
+    pendingSync,
+    conflict,
+    keepLocalChanges,
+    discardLocalChanges,
     reloadFromServer,
     setOwned,
     adjustOwned,
