@@ -1,42 +1,101 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  generatePassword,
+  getPasswordPolicyIssues,
+  isPasswordStrong,
+} from '../../shared/passwordPolicy'
 
 type Props = {
   value: string
   onChange: (value: string) => void
   autoComplete?: string
   label: string
+  /** Show complexity hint + generate button (new password flows). */
+  enforcePolicy?: boolean
 }
 
-export function PasswordField({ value, onChange, autoComplete, label }: Props) {
+export function PasswordField({
+  value,
+  onChange,
+  autoComplete,
+  label,
+  enforcePolicy = false,
+}: Props) {
   const { t } = useI18n()
   const [showPassword, setShowPassword] = useState(false)
+  const hintId = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!enforcePolicy) return
+    const input = inputRef.current
+    if (!input) return
+    if (!value) {
+      input.setCustomValidity('')
+      return
+    }
+    input.setCustomValidity(isPasswordStrong(value) ? '' : t('auth.passwordInvalid'))
+  }, [enforcePolicy, value, t])
+
+  const issues = enforcePolicy && value ? getPasswordPolicyIssues(value) : []
 
   return (
-    <label className="auth__field">
-      <span>{label}</span>
-      <span className="auth__password-wrap">
+    <div className="auth__field">
+      <span className="auth__field-label">{label}</span>
+      <span className={`auth__password-wrap${enforcePolicy ? ' auth__password-wrap--with-actions' : ''}`}>
         <input
+          ref={inputRef}
           type={showPassword ? 'text' : 'password'}
           autoComplete={autoComplete}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           required
-          minLength={8}
-          maxLength={128}
+          minLength={PASSWORD_MIN_LENGTH}
+          maxLength={PASSWORD_MAX_LENGTH}
           className={showPassword ? '' : 'auth__password--spoiled'}
+          aria-label={label}
+          aria-describedby={enforcePolicy ? hintId : undefined}
         />
-        <button
-          type="button"
-          className="auth__password-toggle"
-          onClick={() => setShowPassword((v) => !v)}
-          aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
-          aria-pressed={showPassword}
-        >
-          {showPassword ? <EyeOpenIcon /> : <EyeClosedIcon />}
-        </button>
+        <span className="auth__password-actions">
+          {enforcePolicy && (
+            <button
+              type="button"
+              className="auth__password-generate"
+              onClick={() => {
+                const next = generatePassword()
+                onChange(next)
+                setShowPassword(true)
+              }}
+            >
+              {t('auth.generatePassword')}
+            </button>
+          )}
+          <button
+            type="button"
+            className="auth__password-toggle"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+            aria-pressed={showPassword}
+          >
+            {showPassword ? <EyeOpenIcon /> : <EyeClosedIcon />}
+          </button>
+        </span>
       </span>
-    </label>
+      {enforcePolicy && (
+        <p id={hintId} className="auth__password-hint">
+          {t('auth.passwordRules', { min: PASSWORD_MIN_LENGTH })}
+          {issues.length > 0 ? (
+            <span className="auth__password-hint-status" role="status">
+              {' '}
+              · {t('auth.passwordInvalid')}
+            </span>
+          ) : null}
+        </p>
+      )}
+    </div>
   )
 }
 

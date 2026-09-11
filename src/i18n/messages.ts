@@ -49,6 +49,25 @@ const ru: Dict = {
   'app.stat.attemptsUp': 'Увеличить оставшиеся инициации',
   'site.footer': 'Создано фанатом для фанатов',
 
+  'legal.termsLink': 'Условия использования',
+  'legal.termsTitle': 'Условия использования',
+  'legal.termsIntro':
+    'Этот сайт — неофициальный фанатский сервис. Он не связан с правообладателями игры и предоставляется сообществу на добровольной основе.',
+  'legal.termsAsIs':
+    'Сервис предоставляется «как есть», без каких-либо гарантий работоспособности, доступности, сохранности данных или соответствия вашим ожиданиям.',
+  'legal.termsLiability':
+    'Администрация и авторы не несут ответственности за любые убытки, потерю данных, простои, действия других пользователей или последствия использования сервиса. Пользуясь сайтом, вы принимаете эти условия.',
+  'legal.termsPrivacy':
+    'Не указывайте в имени пользователя, заметках и других публичных полях реальное имя, адрес, телефон и прочие конфиденциальные данные. Обеспечение безопасности таких сведений — ваша ответственность; сервис не гарантирует их защиту.',
+  'legal.termsCookies':
+    'Для работы авторизации и базовых настроек сайт использует cookie. Без них сервис функционировать не может.',
+  'legal.backHome': 'На главную',
+
+  'cookies.bannerAria': 'Уведомление о cookie',
+  'cookies.bannerText':
+    'Сайт использует cookie, без них он не работает. Нажмите «Принять», чтобы продолжить. Если не хотите — просто закройте вкладку.',
+  'cookies.accept': 'Принять',
+
   'common.close': 'Закрыть',
   'common.cancel': 'Отмена',
   'common.delete': 'Удалить',
@@ -269,9 +288,16 @@ const ru: Dict = {
   'auth.loginLead': 'Устрой Зобо оверкилл!\n...но сначала войди в аккаунт.',
   'auth.registerLead': 'Укажите email — на него придёт ссылка для подтверждения аккаунта.',
   'auth.username': 'Имя пользователя',
+  'auth.usernamePrivacy':
+    'Не используйте реальное имя и другие персональные данные. Имя пользователя может быть видно другим. За сохранность конфиденциальной информации, которую вы сами укажете, ответственность несёте вы.',
   'auth.uid': 'Игровой UID',
   'auth.uidPlaceholder': 'Ваш UID в игре',
   'auth.password': 'Пароль',
+  'auth.passwordRules':
+    'Не меньше {min} символов: буквы, цифры и спецсимвол (!@#$%^&* и т.п.).',
+  'auth.passwordInvalid': 'Пароль не соответствует требованиям',
+  'auth.generatePassword': 'Сгенерировать',
+  'auth.acceptTermsPrefix': 'Я принимаю',
   'auth.showPassword': 'Показать пароль',
   'auth.hidePassword': 'Скрыть пароль',
   'auth.email': 'Эл. почта',
@@ -483,6 +509,25 @@ const en: Dict = {
   'app.stat.attemptsDown': 'Decrease remaining initiations',
   'app.stat.attemptsUp': 'Increase remaining initiations',
   'site.footer': 'Made by a fan for fans',
+
+  'legal.termsLink': 'Terms of use',
+  'legal.termsTitle': 'Terms of use',
+  'legal.termsIntro':
+    'This site is an unofficial fan-made service. It is not affiliated with the game rights holders and is provided to the community on a voluntary basis.',
+  'legal.termsAsIs':
+    'The service is provided “as is”, without any warranties of availability, fitness for purpose, or data durability.',
+  'legal.termsLiability':
+    'The operators and authors are not liable for any losses, data loss, downtime, actions of other users, or consequences of using the service. By using the site you accept these terms.',
+  'legal.termsPrivacy':
+    'Do not put your real name, address, phone number, or other confidential data in usernames, notes, or other public fields. Keeping such information safe is your responsibility; the service does not guarantee its protection.',
+  'legal.termsCookies':
+    'The site uses cookies for authentication and basic preferences. Without them the service cannot function.',
+  'legal.backHome': 'Back to home',
+
+  'cookies.bannerAria': 'Cookie notice',
+  'cookies.bannerText':
+    'This site uses cookies; it cannot work without them. Click “Accept” to continue. If you prefer not to — just close the tab.',
+  'cookies.accept': 'Accept',
 
   'common.close': 'Close',
   'common.cancel': 'Cancel',
@@ -703,9 +748,16 @@ const en: Dict = {
   'auth.loginLead': 'Overkill that Zobo!\n...but first, log in.',
   'auth.registerLead': 'We will send a confirmation link to your email.',
   'auth.username': 'Username',
+  'auth.usernamePrivacy':
+    'Do not use your real name or other personal data. Usernames may be visible to others. You are responsible for any confidential information you choose to enter; we do not guarantee its protection.',
   'auth.uid': 'Game UID',
   'auth.uidPlaceholder': 'Your in-game UID',
   'auth.password': 'Password',
+  'auth.passwordRules':
+    'At least {min} characters: letters, digits, and a special character (!@#$%^&* etc.).',
+  'auth.passwordInvalid': 'Password does not meet the requirements',
+  'auth.generatePassword': 'Generate',
+  'auth.acceptTermsPrefix': 'I accept the',
   'auth.showPassword': 'Show password',
   'auth.hidePassword': 'Hide password',
   'auth.email': 'Email',

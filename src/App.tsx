@@ -21,6 +21,7 @@ import {
   SharedCollectionNeededTab,
 } from './pages/SharedCollectionPage'
 import { VerifyEmailPage, ResetPasswordPage } from './pages/AuthEmailPages'
+import { TermsPage } from './pages/TermsPage'
 import { CozyFarmPage } from './pages/CozyFarmPage'
 import {
   collectionNeededPath,
@@ -56,6 +57,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/terms" element={<TermsPage />} />
 
       {/* Card-trades hub + auth emails (reserved, not an event slug) */}
       <Route path="/card-trades" element={<CardTradesHubPage />} />

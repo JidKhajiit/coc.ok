@@ -122,6 +122,7 @@ function ResetPasswordContent() {
               value={password}
               onChange={setPassword}
               autoComplete="new-password"
+              enforcePolicy
             />
             <AuthMessage error={error} />
             <button type="submit" className="auth__submit" disabled={submitting || !token}>
