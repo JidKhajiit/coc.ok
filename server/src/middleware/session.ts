@@ -14,6 +14,8 @@ import type { Env } from '../env.js'
 
 export const SESSION_COOKIE = 'session_id'
 export const DEVICE_COOKIE = 'device_id'
+/** Non-httpOnly flag set by the browser after the user accepts the cookie banner. */
+export const CONSENT_COOKIE = 'cookie_consent'
 const SESSION_DAYS = 30
 const DEVICE_DAYS = 365
 const MAX_DEVICE_ACCOUNTS = 10
@@ -51,6 +53,10 @@ type CookieContext = {
   header: (name: string, value: string) => void
 }
 
+type CookieReadable = CookieContext & {
+  req: { header: (name: string) => string | undefined }
+}
+
 function sessionExpiry(): Date {
   const d = new Date()
   d.setDate(d.getDate() + SESSION_DAYS)
@@ -67,45 +73,55 @@ export function cookieOptions(env: Env, httpOnly = true, maxAgeDays = SESSION_DA
   }
 }
 
+export function hasCookieConsent(
+  c: Parameters<typeof getCookie>[0] | CookieReadable,
+): boolean {
+  return getCookie(c as Parameters<typeof getCookie>[0], CONSENT_COOKIE) === '1'
+}
+
 export function createSessionMiddleware(db: Db, env: Env) {
   return createMiddleware<{ Variables: AppVariables }>(async (c, next) => {
-    const sessionId = getCookie(c, SESSION_COOKIE)
     let user: SessionUser | null = null
 
-    if (sessionId) {
-      const rows = await db
-        .select({
-          sessionId: sessions.id,
-          userId: users.id,
-          username: users.username,
-          activeProfileId: users.activeProfileId,
-          avatarUrl: users.avatarUrl,
-          expiresAt: sessions.expiresAt,
-        })
-        .from(sessions)
-        .innerJoin(users, eq(sessions.userId, users.id))
-        .where(eq(sessions.id, sessionId))
-        .limit(1)
+    // Do not read/write auth cookies until the user accepted the banner.
+    if (hasCookieConsent(c)) {
+      const sessionId = getCookie(c, SESSION_COOKIE)
 
-      const row = rows[0]
-      if (row && row.expiresAt > new Date()) {
-        const permRows = await db
-          .selectDistinct({ name: permissions.name })
-          .from(userRoles)
-          .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
-          .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-          .where(eq(userRoles.userId, row.userId))
+      if (sessionId) {
+        const rows = await db
+          .select({
+            sessionId: sessions.id,
+            userId: users.id,
+            username: users.username,
+            activeProfileId: users.activeProfileId,
+            avatarUrl: users.avatarUrl,
+            expiresAt: sessions.expiresAt,
+          })
+          .from(sessions)
+          .innerJoin(users, eq(sessions.userId, users.id))
+          .where(eq(sessions.id, sessionId))
+          .limit(1)
 
-        user = {
-          id: row.userId,
-          username: row.username,
-          activeProfileId: row.activeProfileId,
-          avatarUrl: row.avatarUrl,
-          permissions: permRows.map((p) => p.name),
+        const row = rows[0]
+        if (row && row.expiresAt > new Date()) {
+          const permRows = await db
+            .selectDistinct({ name: permissions.name })
+            .from(userRoles)
+            .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
+            .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+            .where(eq(userRoles.userId, row.userId))
+
+          user = {
+            id: row.userId,
+            username: row.username,
+            activeProfileId: row.activeProfileId,
+            avatarUrl: row.avatarUrl,
+            permissions: permRows.map((p) => p.name),
+          }
+        } else if (row) {
+          await db.delete(sessions).where(eq(sessions.id, sessionId))
+          deleteCookie(c, SESSION_COOKIE, cookieOptions(env))
         }
-      } else if (row) {
-        await db.delete(sessions).where(eq(sessions.id, sessionId))
-        deleteCookie(c, SESSION_COOKIE, cookieOptions(env))
       }
     }
 
@@ -114,21 +130,32 @@ export function createSessionMiddleware(db: Db, env: Env) {
   })
 }
 
+/**
+ * Returns device id only when consent is present (and persists/refreshes the cookie).
+ * Without consent: returns an existing device cookie value for read-only use, or null.
+ * Never writes cookies without consent.
+ */
 export function ensureDeviceId(
   env: Env,
-  c: CookieContext & { req: { header: (name: string) => string | undefined } },
-): string {
+  c: CookieReadable,
+): string | null {
   const existing = getCookie(c as Parameters<typeof getCookie>[0], DEVICE_COOKIE)
-  if (existing && /^[0-9a-f-]{36}$/i.test(existing)) {
-    // Refresh expiry while device is used.
+  const validExisting = existing && /^[0-9a-f-]{36}$/i.test(existing) ? existing : null
+
+  if (!hasCookieConsent(c)) {
+    return validExisting
+  }
+
+  if (validExisting) {
     setCookie(
       c as Parameters<typeof setCookie>[0],
       DEVICE_COOKIE,
-      existing,
+      validExisting,
       cookieOptions(env, true, DEVICE_DAYS),
     )
-    return existing
+    return validExisting
   }
+
   const id = crypto.randomUUID()
   setCookie(c as Parameters<typeof setCookie>[0], DEVICE_COOKIE, id, cookieOptions(env, true, DEVICE_DAYS))
   return id
@@ -147,10 +174,18 @@ export async function loadUserPermissions(db: Db, userId: string): Promise<strin
 export async function createSession(
   db: Db,
   env: Env,
-  c: CookieContext & { req: { header: (name: string) => string | undefined } },
+  c: CookieReadable,
   userId: string,
 ): Promise<string> {
+  if (!hasCookieConsent(c)) {
+    throw new Error('COOKIE_CONSENT_REQUIRED')
+  }
+
   const deviceId = ensureDeviceId(env, c)
+  if (!deviceId) {
+    throw new Error('COOKIE_CONSENT_REQUIRED')
+  }
+
   const id = crypto.randomUUID()
   await db.insert(sessions).values({
     id,
@@ -233,9 +268,11 @@ export async function ensureDeviceAccountLink(
 
 export async function listDeviceAccounts(
   db: Db,
-  deviceId: string,
+  deviceId: string | null,
   activeUserId: string | null,
 ): Promise<DeviceAccountSummary[]> {
+  if (!deviceId) return []
+
   const rows = await db
     .select({
       id: users.id,
@@ -261,10 +298,14 @@ export async function listDeviceAccounts(
 export async function switchDeviceAccount(
   db: Db,
   env: Env,
-  c: CookieContext,
+  c: CookieReadable,
   deviceId: string,
   userId: string,
 ): Promise<SessionUser | null> {
+  if (!hasCookieConsent(c)) {
+    return null
+  }
+
   const rows = await db
     .select({
       sessionId: deviceAccounts.sessionId,
@@ -313,14 +354,16 @@ export async function destroySession(
   if (sessionId) {
     await db.delete(sessions).where(eq(sessions.id, sessionId))
   }
-  deleteCookie(c, SESSION_COOKIE, cookieOptions(env))
+  if (hasCookieConsent(c)) {
+    deleteCookie(c, SESSION_COOKIE, cookieOptions(env))
+  }
 }
 
 /** Log out current account on this device; activate another if present. */
 export async function logoutCurrentDeviceAccount(
   db: Db,
   env: Env,
-  c: CookieContext & { req: { header: (name: string) => string | undefined } },
+  c: CookieReadable,
   sessionId: string | undefined,
   activeUserId: string,
 ): Promise<{ user: SessionUser | null; accounts: DeviceAccountSummary[] }> {
@@ -328,10 +371,12 @@ export async function logoutCurrentDeviceAccount(
   if (sessionId) {
     await db.delete(sessions).where(eq(sessions.id, sessionId))
   }
-  deleteCookie(c as Parameters<typeof deleteCookie>[0], SESSION_COOKIE, cookieOptions(env))
+  if (hasCookieConsent(c)) {
+    deleteCookie(c as Parameters<typeof deleteCookie>[0], SESSION_COOKIE, cookieOptions(env))
+  }
 
   const remaining = await listDeviceAccounts(db, deviceId, null)
-  if (remaining.length === 0) {
+  if (remaining.length === 0 || !deviceId) {
     return { user: null, accounts: [] }
   }
 
@@ -344,7 +389,7 @@ export async function logoutCurrentDeviceAccount(
 export async function removeDeviceAccount(
   db: Db,
   env: Env,
-  c: CookieContext & { req: { header: (name: string) => string | undefined } },
+  c: CookieReadable,
   deviceId: string,
   userId: string,
   activeUserId: string | null,
@@ -360,7 +405,9 @@ export async function removeDeviceAccount(
   }
 
   if (activeUserId === userId) {
-    deleteCookie(c as Parameters<typeof deleteCookie>[0], SESSION_COOKIE, cookieOptions(env))
+    if (hasCookieConsent(c)) {
+      deleteCookie(c as Parameters<typeof deleteCookie>[0], SESSION_COOKIE, cookieOptions(env))
+    }
     const remaining = await listDeviceAccounts(db, deviceId, null)
     if (remaining.length === 0) {
       return { user: null, accounts: [], switched: true }

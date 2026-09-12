@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { BRAND_NAME } from '../brand'
 import { AuthMessage, PasswordField } from './PasswordField'
 import { isPasswordStrong } from '../../shared/passwordPolicy'
+import { useCookieConsent } from '../hooks/useCookieConsent'
 
 type Mode = 'login' | 'register' | 'forgot' | 'verify-sent'
 
@@ -29,6 +30,7 @@ export function AuthPage({
   onClearInfo,
 }: Props) {
   const { t } = useI18n()
+  const { accepted: cookieConsent } = useCookieConsent()
   const [mode, setMode] = useState<Mode>('login')
   const [login, setLogin] = useState('')
   const [username, setUsername] = useState('')
@@ -46,6 +48,7 @@ export function AuthPage({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (mode === 'login' && !cookieConsent) return
     if (mode === 'register') {
       if (!acceptedTerms) return
       if (!isPasswordStrong(password)) return
@@ -96,6 +99,12 @@ export function AuthPage({
         <p className="auth__brand">{BRAND_NAME}</p>
         <h1 className="auth__title">{title}</h1>
         <p className="auth__lead">{lead}</p>
+
+        {mode === 'login' && !cookieConsent && (
+          <p className="auth__lead auth__lead--warn" role="status">
+            {t('cookies.requiredForAuth')}
+          </p>
+        )}
 
         {mode === 'verify-sent' ? (
           <>
@@ -223,7 +232,11 @@ export function AuthPage({
             <button
               type="submit"
               className="auth__submit"
-              disabled={submitting || (mode === 'register' && !acceptedTerms)}
+              disabled={
+                submitting ||
+                (mode === 'register' && !acceptedTerms) ||
+                (mode === 'login' && !cookieConsent)
+              }
             >
               {submitting
                 ? t('auth.submitting')

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as api from '../api/client'
 import type { AuthUser, DeviceAccount } from '../api/client'
+import { useCookieConsent } from './useCookieConsent'
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -16,6 +17,7 @@ function applySession(
 }
 
 export function useAuth() {
+  const { accepted: cookieConsent } = useCookieConsent()
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [accounts, setAccounts] = useState<DeviceAccount[]>([])
@@ -23,6 +25,12 @@ export function useAuth() {
   const [info, setInfo] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
+    if (!cookieConsent) {
+      setUser(null)
+      setAccounts([])
+      setStatus('unauthenticated')
+      return null
+    }
     try {
       const payload = await api.getMe()
       applySession(payload, setUser, setAccounts, setStatus)
@@ -35,25 +43,33 @@ export function useAuth() {
       setError(err instanceof Error ? err.message : 'Failed to check session')
       return null
     }
-  }, [])
+  }, [cookieConsent])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
-  const login = useCallback(async (loginValue: string, password: string) => {
-    setError(null)
-    setInfo(null)
-    try {
-      const payload = await api.login(loginValue, password)
-      applySession(payload, setUser, setAccounts, setStatus)
-      return payload.user!
-    } catch (err) {
-      const message = err instanceof api.ApiError ? err.message : 'Login failed'
-      setError(message)
-      throw err
-    }
-  }, [])
+  const login = useCallback(
+    async (loginValue: string, password: string) => {
+      setError(null)
+      setInfo(null)
+      if (!cookieConsent) {
+        const message = 'Cookie consent is required before signing in'
+        setError(message)
+        throw new Error(message)
+      }
+      try {
+        const payload = await api.login(loginValue, password)
+        applySession(payload, setUser, setAccounts, setStatus)
+        return payload.user!
+      } catch (err) {
+        const message = err instanceof api.ApiError ? err.message : 'Login failed'
+        setError(message)
+        throw err
+      }
+    },
+    [cookieConsent],
+  )
 
   const register = useCallback(async (username: string, email: string, password: string) => {
     setError(null)
@@ -158,6 +174,7 @@ export function useAuth() {
     accounts,
     error,
     info,
+    cookieConsent,
     login,
     register,
     uploadAvatar,

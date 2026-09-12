@@ -1,16 +1,18 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useProfiles } from '../hooks/useProfiles'
 import { PublicAppShell } from './PublicAppShell'
+import { loginPath } from '../lib/loginRedirect'
 
 type Props = {
   permission: string
   redirectTo?: string
 }
 
-export function RequirePermission({ permission, redirectTo = '/card-trades' }: Props) {
+export function RequirePermission({ permission, redirectTo }: Props) {
   const auth = useAuth()
   const profiles = useProfiles(auth.status === 'authenticated')
+  const location = useLocation()
 
   if (auth.status === 'loading') {
     return (
@@ -22,7 +24,8 @@ export function RequirePermission({ permission, redirectTo = '/card-trades' }: P
   }
 
   if (!auth.user) {
-    return <Navigate to={redirectTo} replace />
+    const to = redirectTo ?? loginPath(`${location.pathname}${location.search}`)
+    return <Navigate to={to} replace />
   }
 
   if (!auth.user.permissions.includes(permission)) {

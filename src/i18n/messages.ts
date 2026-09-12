@@ -65,8 +65,9 @@ const ru: Dict = {
 
   'cookies.bannerAria': 'Уведомление о cookie',
   'cookies.bannerText':
-    'Сайт использует cookie, без них он не работает. Нажмите «Принять», чтобы продолжить. Если не хотите — просто закройте вкладку.',
+    'Сайт использует cookie для входа и настроек устройства. Без согласия cookie не включаются. Нажмите «Принять», чтобы продолжить.',
   'cookies.accept': 'Принять',
+  'cookies.requiredForAuth': 'Сначала примите cookie внизу страницы — без этого вход недоступен.',
 
   'common.close': 'Закрыть',
   'common.cancel': 'Отмена',
@@ -557,8 +558,9 @@ const en: Dict = {
 
   'cookies.bannerAria': 'Cookie notice',
   'cookies.bannerText':
-    'This site uses cookies; it cannot work without them. Click “Accept” to continue. If you prefer not to — just close the tab.',
+    'This site uses cookies for sign-in and device preferences. Cookies stay off until you accept. Click “Accept” to continue.',
   'cookies.accept': 'Accept',
+  'cookies.requiredForAuth': 'Accept cookies at the bottom of the page first — sign-in is unavailable without them.',
 
   'common.close': 'Close',
   'common.cancel': 'Cancel',

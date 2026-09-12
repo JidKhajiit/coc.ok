@@ -3171,6 +3171,12 @@ h4 {
   white-space: pre-line;
 }
 
+.auth__lead--warn {
+  margin-top: -0.75rem;
+  color: var(--accent-strong);
+  font-size: 0.95rem;
+}
+
 .auth__form {
   display: grid;
   gap: 1rem;

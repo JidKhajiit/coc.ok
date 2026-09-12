@@ -55,7 +55,7 @@ function VerifyEmailContent() {
         {status === 'ok' && (
           <>
             <p className="auth__lead">{t('auth.verifyEmailSuccess')}</p>
-            <button type="button" className="auth__submit" onClick={() => navigate('/card-trades')}>
+            <button type="button" className="auth__submit" onClick={() => navigate('/login')}>
               {t('auth.login')}
             </button>
           </>
@@ -63,7 +63,7 @@ function VerifyEmailContent() {
         {status === 'error' && (
           <>
             <AuthMessage error={error} />
-            <Link to="/card-trades" className="auth__link auth__link--block">
+            <Link to="/login" className="auth__link auth__link--block">
               {t('auth.backToLogin')}
             </Link>
           </>
@@ -110,7 +110,7 @@ function ResetPasswordContent() {
         {done ? (
           <>
             <p className="auth__lead">{t('auth.resetSuccess')}</p>
-            <button type="button" className="auth__submit" onClick={() => navigate('/card-trades')}>
+            <button type="button" className="auth__submit" onClick={() => navigate('/login')}>
               {t('auth.login')}
             </button>
           </>
