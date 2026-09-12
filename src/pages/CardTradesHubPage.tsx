@@ -116,7 +116,7 @@ function CardTradesHubContent() {
           </p>
           {auth.status === 'unauthenticated' && (
             <p className="hub-welcome__cta">
-              <Link to="/summer-party" className="btn btn--primary">
+              <Link to="/login" className="btn btn--primary">
                 {isRu ? 'Войти / Регистрация' : 'Sign In / Register'}
               </Link>
             </p>

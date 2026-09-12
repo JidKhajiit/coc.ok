@@ -66,7 +66,7 @@ export function SharedCollectionLayout() {
               <Link to={collectionsListPath(eventSlug)} className="btn btn--ghost btn--sm">
                 {t('share.allCollections')}
               </Link>
-              <Link to="/card-trades" className="btn btn--primary btn--sm">
+              <Link to="/login" className="btn btn--primary btn--sm">
                 {t('auth.login')}
               </Link>
             </div>

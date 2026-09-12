@@ -1,12 +1,12 @@
-import { Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useProfiles } from '../hooks/useProfiles'
-import { AuthPage } from './AuthPage'
-import { PublicAppShell } from './PublicAppShell'
+import { loginPath } from '../lib/loginRedirect'
 
 export function RequireAuth() {
   const auth = useAuth()
   const profiles = useProfiles(auth.status === 'authenticated')
+  const location = useLocation()
 
   if (auth.status === 'loading') {
     return (
@@ -18,20 +18,7 @@ export function RequireAuth() {
   }
 
   if (!auth.user) {
-    return (
-      <PublicAppShell>
-        <AuthPage
-          onLogin={auth.login}
-          onRegister={auth.register}
-          onForgotPassword={auth.forgotPassword}
-          onResendVerification={auth.resendVerification}
-          error={auth.error}
-          info={auth.info}
-          onClearError={() => auth.setError(null)}
-          onClearInfo={() => auth.setInfo(null)}
-        />
-      </PublicAppShell>
-    )
+    return <Navigate to={loginPath(`${location.pathname}${location.search}`)} replace />
   }
 
   return (

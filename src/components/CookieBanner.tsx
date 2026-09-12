@@ -1,22 +1,12 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createTranslator } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
-
-const COOKIE_CONSENT_KEY = 'card-trades-cookies-accepted'
-
-function readConsent(): boolean {
-  try {
-    return localStorage.getItem(COOKIE_CONSENT_KEY) === '1'
-  } catch {
-    return false
-  }
-}
+import { useCookieConsent } from '../hooks/useCookieConsent'
 
 export function CookieBanner() {
   const { locale } = usePersistedLocale()
   const t = createTranslator(locale)
-  const [accepted, setAccepted] = useState(readConsent)
+  const { accepted, accept } = useCookieConsent()
 
   if (accepted) return null
 
@@ -27,18 +17,7 @@ export function CookieBanner() {
         <Link to="/terms" className="cookie-banner__link">
           {t('legal.termsLink')}
         </Link>
-        <button
-          type="button"
-          className="btn btn--primary btn--sm"
-          onClick={() => {
-            try {
-              localStorage.setItem(COOKIE_CONSENT_KEY, '1')
-            } catch {
-              // ignore
-            }
-            setAccepted(true)
-          }}
-        >
+        <button type="button" className="btn btn--primary btn--sm" onClick={accept}>
           {t('cookies.accept')}
         </button>
       </div>

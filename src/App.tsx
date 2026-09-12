@@ -23,6 +23,7 @@ import {
 import { VerifyEmailPage, ResetPasswordPage } from './pages/AuthEmailPages'
 import { TermsPage } from './pages/TermsPage'
 import { CozyFarmPage } from './pages/CozyFarmPage'
+import { LoginPage } from './pages/LoginPage'
 import {
   collectionNeededPath,
   collectionPath,
@@ -58,6 +59,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/terms" element={<TermsPage />} />
+      <Route path="/login" element={<LoginPage />} />
 
       {/* Card-trades hub + auth emails (reserved, not an event slug) */}
       <Route path="/card-trades" element={<CardTradesHubPage />} />

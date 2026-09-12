@@ -6,6 +6,7 @@ import { useI18n, type Locale } from '../i18n'
 import { BRAND_NAME } from '../brand'
 import { SiteSettingsDrawer } from './settings/SiteSettingsDrawer'
 import { UserAvatar } from './UserAvatar'
+import { loginPath } from '../lib/loginRedirect'
 
 type Props = {
   locale: Locale
@@ -14,6 +15,8 @@ type Props = {
   showCollectionNav?: boolean
   collectionPath?: string
   onPageSettings?: () => void
+  /** Hide Sign in / Back to app (already on the auth form, etc.) */
+  hideAuthCta?: boolean
 }
 
 export function PublicChrome({
@@ -22,6 +25,7 @@ export function PublicChrome({
   showCollectionNav = true,
   collectionPath = '/summer-party/collections',
   onPageSettings,
+  hideAuthCta = false,
 }: Props) {
   const { t } = useI18n()
   const location = useLocation()
@@ -29,8 +33,11 @@ export function PublicChrome({
   const profiles = useProfiles(auth.status === 'authenticated')
   const [siteOpen, setSiteOpen] = useState(false)
 
-  const onLoginPage = location.pathname === '/card-trades' && auth.status === 'unauthenticated'
-  const showAppCta = showCollectionNav && auth.status !== 'loading' && !onLoginPage
+  const onLoginPage = location.pathname === '/login'
+  const showGuestLogin =
+    !hideAuthCta && !onLoginPage && auth.status === 'unauthenticated'
+  const showBackToApp =
+    !hideAuthCta && Boolean(auth.user) && showCollectionNav
 
   return (
     <>
@@ -47,21 +54,24 @@ export function PublicChrome({
         </nav>
 
         <div className="public-chrome__actions">
-          {showAppCta &&
-            (auth.user ? (
-              <Link to="/card-trades" className="public-chrome__app-link">
-                <UserAvatar
-                  username={auth.user.username}
-                  avatarUrl={auth.user.avatarUrl}
-                  className="public-chrome__avatar"
-                />
-                <span className="public-chrome__app-label">{t('share.backToApp')}</span>
-              </Link>
-            ) : (
-              <Link to="/card-trades" className="btn btn--primary btn--sm public-chrome__cta">
-                {t('auth.login')}
-              </Link>
-            ))}
+          {showBackToApp && auth.user && (
+            <Link to="/card-trades" className="public-chrome__app-link">
+              <UserAvatar
+                username={auth.user.username}
+                avatarUrl={auth.user.avatarUrl}
+                className="public-chrome__avatar"
+              />
+              <span className="public-chrome__app-label">{t('share.backToApp')}</span>
+            </Link>
+          )}
+          {showGuestLogin && (
+            <Link
+              to={loginPath(`${location.pathname}${location.search}`)}
+              className="btn btn--primary btn--sm public-chrome__cta"
+            >
+              {t('auth.login')}
+            </Link>
+          )}
 
           <button
             type="button"

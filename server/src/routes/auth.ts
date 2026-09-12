@@ -247,6 +247,9 @@ export function createAuthRoutes(db: Db, env: Env) {
     try {
       await createSession(db, env, c, user.id)
     } catch (err) {
+      if (err instanceof Error && err.message === 'COOKIE_CONSENT_REQUIRED') {
+        return c.json({ error: 'Cookie consent is required before signing in' }, 403)
+      }
       if (err instanceof Error && err.message === 'DEVICE_ACCOUNT_LIMIT') {
         return c.json({ error: 'Too many accounts on this device (max 10)' }, 400)
       }
@@ -383,7 +386,7 @@ export function createAuthRoutes(db: Db, env: Env) {
     const user = c.get('user')
     const deviceId = ensureDeviceId(env, c)
     const sessionId = getCookie(c, SESSION_COOKIE)
-    if (user && sessionId) {
+    if (user && sessionId && deviceId) {
       await ensureDeviceAccountLink(db, deviceId, user.id, sessionId)
     }
     const accounts = await listDeviceAccounts(db, deviceId, user?.id ?? null)
@@ -411,6 +414,9 @@ export function createAuthRoutes(db: Db, env: Env) {
     }
 
     const deviceId = ensureDeviceId(env, c)
+    if (!deviceId) {
+      return c.json({ error: 'Cookie consent is required' }, 403)
+    }
     const switched = await switchDeviceAccount(db, env, c, deviceId, parsed.data.userId)
     if (!switched) {
       return c.json({ error: 'Account not available on this device' }, 404)
@@ -432,6 +438,9 @@ export function createAuthRoutes(db: Db, env: Env) {
 
     const user = c.get('user')!
     const deviceId = ensureDeviceId(env, c)
+    if (!deviceId) {
+      return c.json({ error: 'Cookie consent is required' }, 403)
+    }
     const result = await removeDeviceAccount(
       db,
       env,
