@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { Db } from '../db/index.js'
 import { cozyFarmListings, cozyFarmVotes, profiles, users } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -110,6 +110,7 @@ export function createCozyFarmRoutes(db: Db) {
       .from(cozyFarmListings)
       .innerJoin(profiles, eq(cozyFarmListings.profileId, profiles.id))
       .leftJoin(cozyFarmVotes, eq(cozyFarmVotes.listingId, cozyFarmListings.id))
+      .where(isNull(profiles.deletedAt))
       .groupBy(
         cozyFarmListings.id,
         cozyFarmListings.profileId,

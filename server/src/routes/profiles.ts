@@ -3,8 +3,11 @@ import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/index.js'
 import {
+  cardTradeProfileStates,
+  cozyFarmListings,
   profileClaims,
   profileMembers,
+  profileStates,
   profiles,
   users,
 } from '../db/schema.js'
@@ -16,6 +19,7 @@ import {
   publicProfile,
   requireProfileAccess,
   resolveActiveProfile,
+  scrubPersonalStateData,
 } from '../lib/profiles.js'
 import {
   CLAIM_SCREENSHOT_MAX_BYTES,
@@ -172,7 +176,7 @@ export function createProfilesRoutes(db: Db, env: { TRUST_PROXY?: boolean }) {
       await db.delete(profileMembers).where(eq(profileMembers.profileId, claim.profileId))
       await db
         .update(profiles)
-        .set({ ownerUserId: claim.claimantUserId })
+        .set({ ownerUserId: claim.claimantUserId, deletedAt: null })
         .where(eq(profiles.id, claim.profileId))
       await db.insert(profileMembers).values({
         profileId: claim.profileId,
@@ -300,20 +304,67 @@ export function createProfilesRoutes(db: Db, env: { TRUST_PROXY?: boolean }) {
     const access = await requireProfileAccess(db, profileId, user.id, 'owner')
     if (!access) return c.json({ error: 'Profile not found' }, 404)
 
-    await db.delete(profiles).where(eq(profiles.id, profileId))
+    const now = new Date()
 
-    const [u] = await db
-      .select({ activeProfileId: users.activeProfileId })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
+    await db.transaction(async (tx) => {
+      await tx.update(profiles).set({ deletedAt: now }).where(eq(profiles.id, profileId))
+      await tx.delete(profileMembers).where(eq(profileMembers.profileId, profileId))
+      await tx
+        .update(users)
+        .set({ activeProfileId: null })
+        .where(eq(users.activeProfileId, profileId))
 
-    if (u?.activeProfileId === profileId) {
-      const next = await resolveActiveProfile(db, user.id, null)
-      return c.json({ ok: true, activeProfileId: next?.id ?? null })
-    }
+      const eventStates = await tx
+        .select({
+          profileId: cardTradeProfileStates.profileId,
+          eventId: cardTradeProfileStates.eventId,
+          data: cardTradeProfileStates.data,
+        })
+        .from(cardTradeProfileStates)
+        .where(eq(cardTradeProfileStates.profileId, profileId))
 
-    return c.json({ ok: true, activeProfileId: u?.activeProfileId ?? null })
+      for (const row of eventStates) {
+        await tx
+          .update(cardTradeProfileStates)
+          .set({
+            data: scrubPersonalStateData(row.data) as unknown as (typeof row)['data'],
+            shareEnabled: false,
+            shareSlug: null,
+            updatedAt: now,
+            updatedByUserId: user.id,
+          })
+          .where(
+            and(
+              eq(cardTradeProfileStates.profileId, row.profileId),
+              eq(cardTradeProfileStates.eventId, row.eventId),
+            ),
+          )
+      }
+
+      const legacy = await tx
+        .select({ data: profileStates.data })
+        .from(profileStates)
+        .where(eq(profileStates.profileId, profileId))
+        .limit(1)
+
+      if (legacy[0]) {
+        await tx
+          .update(profileStates)
+          .set({
+            data: scrubPersonalStateData(legacy[0].data) as unknown as (typeof legacy)[number]['data'],
+            shareEnabled: false,
+            shareSlug: null,
+            updatedAt: now,
+            updatedByUserId: user.id,
+          })
+          .where(eq(profileStates.profileId, profileId))
+      }
+
+      await tx.delete(cozyFarmListings).where(eq(cozyFarmListings.profileId, profileId))
+    })
+
+    const next = await resolveActiveProfile(db, user.id, null)
+    return c.json({ ok: true, activeProfileId: next?.id ?? null })
   })
 
   app.get('/:id/admins', async (c) => {

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { AppVariables } from '../middleware/session.js'
 import { requireAuth } from '../middleware/auth.js'
 import type { Db } from '../db/index.js'
@@ -62,7 +62,7 @@ export function createCollectionsRoutes(db: Db) {
       })
       .from(profileStates)
       .innerJoin(profiles, eq(profileStates.profileId, profiles.id))
-      .where(eq(profileStates.shareEnabled, true))
+      .where(and(eq(profileStates.shareEnabled, true), isNull(profiles.deletedAt)))
       .orderBy(desc(profileStates.updatedAt))
 
     const collections = rows
@@ -98,6 +98,7 @@ export function createCollectionsRoutes(db: Db) {
         data: profileStates.data,
         updatedAt: profileStates.updatedAt,
         shareEnabled: profileStates.shareEnabled,
+        deletedAt: profiles.deletedAt,
       })
       .from(profileStates)
       .innerJoin(profiles, eq(profileStates.profileId, profiles.id))
@@ -105,7 +106,7 @@ export function createCollectionsRoutes(db: Db) {
       .limit(1)
 
     const row = rows[0]
-    if (!row?.shareEnabled || !row.slug) {
+    if (!row?.shareEnabled || !row.slug || row.deletedAt) {
       return c.json({ error: 'Collection not found' }, 404)
     }
 

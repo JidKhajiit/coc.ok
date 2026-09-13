@@ -82,9 +82,13 @@ export function useProfiles(enabled: boolean) {
     return api.addProfileAdmin(profileId, username)
   }, [])
 
-  const removeAdmin = useCallback(async (profileId: string, userId: string) => {
-    return api.removeProfileAdmin(profileId, userId)
-  }, [])
+  const removeAdmin = useCallback(
+    async (profileId: string, userId: string) => {
+      await api.removeProfileAdmin(profileId, userId)
+      return refresh()
+    },
+    [refresh],
+  )
 
   const claim = useCallback(
     async (profileId: string, screenshot: File, message?: string) => {

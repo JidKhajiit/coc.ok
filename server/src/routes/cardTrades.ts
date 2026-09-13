@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/index.js'
 import {
@@ -460,6 +460,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
       and(
         eq(cardTradeProfileStates.eventId, event.id),
         eq(cardTradeProfileStates.shareEnabled, true),
+        isNull(profiles.deletedAt),
       ),
     )
     .orderBy(desc(cardTradeProfileStates.updatedAt))
@@ -491,7 +492,7 @@ async function listSharedRows(db: Db, event: CardTradeEventDetail): Promise<Shar
     })
     .from(profileStates)
     .innerJoin(profiles, eq(profileStates.profileId, profiles.id))
-    .where(eq(profileStates.shareEnabled, true))
+    .where(and(eq(profileStates.shareEnabled, true), isNull(profiles.deletedAt)))
     .orderBy(desc(profileStates.updatedAt))
 
   for (const row of legacyRows) {

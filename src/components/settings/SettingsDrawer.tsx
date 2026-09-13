@@ -63,6 +63,8 @@ type SectionProps = {
   /** Shown as a "?" tooltip next to the title */
   tip?: string
   tipAriaLabel?: string
+  /** Extra controls next to the title (e.g. "+" to add) */
+  titleActions?: ReactNode
   children: ReactNode
 }
 
@@ -137,13 +139,21 @@ function SettingsHelpTip({ tip, tipAriaLabel }: { tip: string; tipAriaLabel?: st
   )
 }
 
-export function SettingsSection({ title, hint, tip, tipAriaLabel, children }: SectionProps) {
+export function SettingsSection({
+  title,
+  hint,
+  tip,
+  tipAriaLabel,
+  titleActions,
+  children,
+}: SectionProps) {
   return (
     <section className="settings-section">
       <div className="settings-section__head">
         <div className="settings-section__title-row">
           <h3>{title}</h3>
           {tip && <SettingsHelpTip tip={tip} tipAriaLabel={tipAriaLabel} />}
+          {titleActions && <div className="settings-section__title-actions">{titleActions}</div>}
         </div>
         {hint && <p className="settings-section__hint">{hint}</p>}
       </div>
