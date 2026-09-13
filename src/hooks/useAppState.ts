@@ -77,6 +77,8 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
   )
   const conflictRef = useRef<StateConflict | null>(null)
   const editGenerationRef = useRef(0)
+  const profileIdRef = useRef(profileId)
+  const loadingRef = useRef(loading)
 
   useEffect(() => {
     stateRef.current = state
@@ -86,11 +88,19 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
     conflictRef.current = conflict
   }, [conflict])
 
+  useEffect(() => {
+    loadingRef.current = loading
+  }, [loading])
+
+  useEffect(() => {
+    profileIdRef.current = profileId
+  }, [profileId])
+
   const persistLocal = useCallback(
-    async (data: AppState, dirty: boolean) => {
-      if (!profileId) return
+    async (data: AppState, dirty: boolean, forProfileId: string | null = profileIdRef.current) => {
+      if (!forProfileId || forProfileId !== profileIdRef.current) return
       await writeLocalEventState({
-        profileId,
+        profileId: forProfileId,
         eventSlug,
         data,
         baseUpdatedAt: baseUpdatedAtRef.current,
@@ -98,37 +108,35 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
         dirty,
       })
     },
-    [profileId, eventSlug],
+    [eventSlug],
   )
 
   const syncToServer = useCallback(
-    async (snapshot: AppState, generation: number) => {
-      if (!profileId) return
+    async (snapshot: AppState, generation: number, forProfileId: string | null = profileIdRef.current) => {
+      if (!forProfileId || forProfileId !== profileIdRef.current) return
       if (syncInFlightRef.current) return
+      if (editGenerationRef.current !== generation) return
       syncInFlightRef.current = true
       setSaving(true)
       let retryAfter = false
       try {
         const saved = await api.putEventState(eventSlug, snapshot, baseUpdatedAtRef.current)
-        const stillCurrent = editGenerationRef.current === generation
-        baseUpdatedAtRef.current = saved.updatedAt
-        if (stillCurrent) {
-          dirtyRef.current = false
-          skipSaveRef.current = true
-          setState(saved.data)
-          setLastSaved(true)
-          setPendingSync(false)
-          setConflict(null)
-          setSaveError(null)
-          await persistLocal(saved.data, false)
-        } else {
-          dirtyRef.current = true
-          setPendingSync(true)
-          setLastSaved(false)
-          await persistLocal(stateRef.current, true)
-          retryAfter = true
+        if (forProfileId !== profileIdRef.current || editGenerationRef.current !== generation) {
+          return
         }
+        baseUpdatedAtRef.current = saved.updatedAt
+        dirtyRef.current = false
+        skipSaveRef.current = true
+        setState(saved.data)
+        setLastSaved(true)
+        setPendingSync(false)
+        setConflict(null)
+        setSaveError(null)
+        await persistLocal(saved.data, false, forProfileId)
       } catch (err) {
+        if (forProfileId !== profileIdRef.current || editGenerationRef.current !== generation) {
+          return
+        }
         const conflictPayload = api.getConflictPayload(err)
         if (conflictPayload) {
           setConflict({
@@ -140,7 +148,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
           setLastSaved(false)
           setSaveError(null)
           dirtyRef.current = true
-          await persistLocal(snapshot, true)
+          await persistLocal(snapshot, true, forProfileId)
           return
         }
 
@@ -148,20 +156,26 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
         setPendingSync(true)
         setLastSaved(false)
         setSaveError(err instanceof Error ? err.message : 'Failed to save data')
-        await persistLocal(snapshot, true)
+        await persistLocal(snapshot, true, forProfileId)
+        retryAfter = true
       } finally {
         syncInFlightRef.current = false
         setSaving(false)
         if (retryAfter) {
           queueMicrotask(() => {
-            if (dirtyRef.current && !syncInFlightRef.current && !conflictRef.current) {
+            if (
+              dirtyRef.current &&
+              !syncInFlightRef.current &&
+              !conflictRef.current &&
+              profileIdRef.current === forProfileId
+            ) {
               void syncToServerRef.current(stateRef.current, editGenerationRef.current)
             }
           })
         }
       }
     },
-    [eventSlug, persistLocal, profileId],
+    [eventSlug, persistLocal],
   )
 
   useEffect(() => {
@@ -170,41 +184,52 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
   useEffect(() => {
     let cancelled = false
+    const loadGeneration = ++editGenerationRef.current
+    const loadProfileId = profileId
+
+    // Reset immediately so save-effect cannot leak previous profile data.
+    skipSaveRef.current = true
+    dirtyRef.current = false
+    baseUpdatedAtRef.current = null
+    setLoading(true)
+    setSaveError(null)
+    setConflict(null)
+    setState(EMPTY_STATE)
+    setLastSaved(true)
+    setPendingSync(false)
 
     async function loadState() {
-      setLoading(true)
-      setSaveError(null)
-      setConflict(null)
-      dirtyRef.current = false
-      baseUpdatedAtRef.current = null
-
-      if (!profileId) {
-        skipSaveRef.current = true
-        setState(EMPTY_STATE)
-        setLastSaved(true)
-        setPendingSync(false)
-        setLoading(false)
+      if (!loadProfileId) {
+        if (!cancelled && editGenerationRef.current === loadGeneration) {
+          setLoading(false)
+        }
         return
       }
 
-      const local = await readLocalEventState(profileId, eventSlug)
+      const local = await readLocalEventState(loadProfileId, eventSlug)
 
       try {
         let payload = await api.getEventState(eventSlug)
+        if (cancelled || editGenerationRef.current !== loadGeneration || profileIdRef.current !== loadProfileId) {
+          return
+        }
+
         let data = migrateState(payload.data)
         let updatedAt = payload.updatedAt
 
         const legacy = loadLegacyLocalStorage(eventSlug)
         if (legacy && isEmptyState(data) && !isEmptyState(legacy) && !local?.dirty) {
           payload = await api.putEventState(eventSlug, legacy, updatedAt)
+          if (cancelled || editGenerationRef.current !== loadGeneration || profileIdRef.current !== loadProfileId) {
+            return
+          }
           data = migrateState(payload.data)
           updatedAt = payload.updatedAt
           clearLegacyLocalStorage(eventSlug)
         }
 
-        if (cancelled) return
-
-        if (local?.dirty) {
+        // Prefer dirty local only when it belongs to this profile and generation is current.
+        if (local?.dirty && local.profileId === loadProfileId) {
           baseUpdatedAtRef.current = local.baseUpdatedAt
           dirtyRef.current = true
           skipSaveRef.current = true
@@ -212,7 +237,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
           setLastSaved(false)
           setPendingSync(true)
           setLoading(false)
-          void syncToServerRef.current(migrateState(local.data), editGenerationRef.current)
+          void syncToServerRef.current(migrateState(local.data), loadGeneration)
           return
         }
 
@@ -223,7 +248,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
         setLastSaved(true)
         setPendingSync(false)
         await writeLocalEventState({
-          profileId,
+          profileId: loadProfileId,
           eventSlug,
           data,
           baseUpdatedAt: updatedAt,
@@ -231,8 +256,10 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
           dirty: false,
         })
       } catch (err) {
-        if (cancelled) return
-        if (local) {
+        if (cancelled || editGenerationRef.current !== loadGeneration || profileIdRef.current !== loadProfileId) {
+          return
+        }
+        if (local && local.profileId === loadProfileId) {
           baseUpdatedAtRef.current = local.baseUpdatedAt
           dirtyRef.current = local.dirty
           skipSaveRef.current = true
@@ -244,19 +271,25 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
           setSaveError(err instanceof Error ? err.message : 'Failed to load data')
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && editGenerationRef.current === loadGeneration) {
+          setLoading(false)
+        }
       }
     }
 
     void loadState()
     return () => {
       cancelled = true
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
   }, [eventSlug, profileId])
 
   const reloadFromServer = useCallback(async () => {
+    const forProfileId = profileIdRef.current
+    if (!forProfileId) return
     try {
       const payload = await api.getEventState(eventSlug)
+      if (profileIdRef.current !== forProfileId) return
       const data = migrateState(payload.data)
       baseUpdatedAtRef.current = payload.updatedAt
       dirtyRef.current = false
@@ -266,7 +299,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
       setPendingSync(false)
       setConflict(null)
       setSaveError(null)
-      await persistLocal(data, false)
+      await persistLocal(data, false, forProfileId)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to load data')
     }
@@ -274,18 +307,19 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
   const keepLocalChanges = useCallback(async () => {
     if (!conflict) return
-    // Align base revision with server so the next PUT overwrites with local data.
+    const forProfileId = profileIdRef.current
     baseUpdatedAtRef.current = conflict.serverUpdatedAt
     setConflict(null)
     dirtyRef.current = true
     setPendingSync(true)
     setLastSaved(false)
-    await persistLocal(stateRef.current, true)
-    await syncToServer(stateRef.current, editGenerationRef.current)
+    await persistLocal(stateRef.current, true, forProfileId)
+    await syncToServer(stateRef.current, editGenerationRef.current, forProfileId)
   }, [conflict, persistLocal, syncToServer])
 
   const discardLocalChanges = useCallback(async () => {
     if (!conflict) return
+    const forProfileId = profileIdRef.current
     const data = migrateState(conflict.serverData)
     baseUpdatedAtRef.current = conflict.serverUpdatedAt
     dirtyRef.current = false
@@ -295,7 +329,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
     setLastSaved(true)
     setPendingSync(false)
     setSaveError(null)
-    await persistLocal(data, false)
+    await persistLocal(data, false, forProfileId)
   }, [conflict, persistLocal])
 
   useEffect(() => {
@@ -305,17 +339,19 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
       return
     }
     if (conflict) return
+    if (!profileIdRef.current) return
 
     dirtyRef.current = true
     setLastSaved(false)
     setPendingSync(true)
     setSaveError(null)
     const generation = ++editGenerationRef.current
-    void persistLocal(state, true)
+    const forProfileId = profileIdRef.current
+    void persistLocal(state, true, forProfileId)
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      void syncToServer(state, generation)
+      void syncToServer(state, generation, forProfileId)
     }, SAVE_DEBOUNCE_MS)
 
     return () => {
@@ -325,8 +361,17 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
   useEffect(() => {
     const flush = () => {
-      if (!dirtyRef.current || conflictRef.current || loading || syncInFlightRef.current) return
-      void syncToServerRef.current(stateRef.current, editGenerationRef.current)    }
+      if (
+        !dirtyRef.current ||
+        conflictRef.current ||
+        loadingRef.current ||
+        syncInFlightRef.current ||
+        !profileIdRef.current
+      ) {
+        return
+      }
+      void syncToServerRef.current(stateRef.current, editGenerationRef.current)
+    }
     const onOnline = () => flush()
     const onVisibility = () => {
       if (document.visibilityState === 'visible') flush()
@@ -337,7 +382,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [loading])
+  }, [])
 
   const reservedByCard = useMemo(() => {
     const map: Record<string, number> = {}

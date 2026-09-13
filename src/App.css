@@ -547,6 +547,20 @@ h4 {
   margin: 0;
 }
 
+.settings-section__title-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-section__add-btn {
+  min-width: 2rem;
+  padding-inline: 0.45rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 .help-tip.help-tip--settings {
   position: relative;
   flex-shrink: 0;
@@ -1127,6 +1141,45 @@ h4 {
   flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+}
+
+.settings-profiles__create {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.settings-profiles__create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-profiles__admins-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s ease;
+}
+
+.settings-profiles__admins-panel.is-open {
+  grid-template-rows: 1fr;
+}
+
+.settings-profiles__admins-panel-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.settings-profiles__admins-panel .settings-profiles__admins {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(36, 63, 50, 0.12);
+}
+
+.settings-profiles__admins h4 {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: var(--fw-semibold);
+  color: var(--ink-soft);
 }
 
 .settings-profiles__admin-list {

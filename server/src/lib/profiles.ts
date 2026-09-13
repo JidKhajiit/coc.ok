@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { Db } from '../db/index.js'
 import { profileMembers, profiles, users } from '../db/schema.js'
 
@@ -13,6 +13,8 @@ export type ProfileRow = {
 }
 
 export type ProfileAccess = ProfileRow & { role: ProfileRole }
+
+const notDeleted = isNull(profiles.deletedAt)
 
 export async function getMembership(
   db: Db,
@@ -30,7 +32,13 @@ export async function getMembership(
     })
     .from(profileMembers)
     .innerJoin(profiles, eq(profiles.id, profileMembers.profileId))
-    .where(and(eq(profileMembers.profileId, profileId), eq(profileMembers.userId, userId)))
+    .where(
+      and(
+        eq(profileMembers.profileId, profileId),
+        eq(profileMembers.userId, userId),
+        notDeleted,
+      ),
+    )
     .limit(1)
 
   const row = rows[0]
@@ -62,7 +70,7 @@ export async function listUserProfiles(db: Db, userId: string) {
     })
     .from(profileMembers)
     .innerJoin(profiles, eq(profiles.id, profileMembers.profileId))
-    .where(eq(profileMembers.userId, userId))
+    .where(and(eq(profileMembers.userId, userId), notDeleted))
 }
 
 export async function resolveActiveProfile(
@@ -86,7 +94,9 @@ export async function resolveActiveProfile(
     })
     .from(profileMembers)
     .innerJoin(profiles, eq(profiles.id, profileMembers.profileId))
-    .where(and(eq(profileMembers.userId, userId), eq(profileMembers.role, 'owner')))
+    .where(
+      and(eq(profileMembers.userId, userId), eq(profileMembers.role, 'owner'), notDeleted),
+    )
     .limit(1)
 
   if (owned[0] && (owned[0].role === 'owner' || owned[0].role === 'admin')) {
@@ -118,5 +128,22 @@ export function publicProfile(p: {
     ownerUserId: p.ownerUserId,
     role: p.role ?? undefined,
     createdAt: p.createdAt?.toISOString(),
+  }
+}
+
+/** Keep completed trades for trends; strip personal collection data. */
+export function scrubPersonalStateData(data: unknown): Record<string, unknown> {
+  const raw = data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+  return {
+    owned: {},
+    neededBy: {},
+    favoriteFolders: [],
+    accounts: [],
+    wishlist: [],
+    trades: Array.isArray(raw.trades) ? raw.trades : [],
+    potentialTrades: [],
+    locale: raw.locale === 'en' || raw.locale === 'ru' ? raw.locale : 'ru',
+    tradeAttemptsLeft:
+      typeof raw.tradeAttemptsLeft === 'number' ? raw.tradeAttemptsLeft : undefined,
   }
 }

@@ -72,6 +72,7 @@ export function SiteSettingsDrawer({
   const [claimTarget, setClaimTarget] = useState<{ profileId: string; gameUid: string } | null>(null)
   const [claimMessage, setClaimMessage] = useState('')
   const [claimFile, setClaimFile] = useState<File | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -92,6 +93,7 @@ export function SiteSettingsDrawer({
     setClaimTarget(null)
     setClaimMessage('')
     setClaimFile(null)
+    setCreateOpen(false)
     if (profiles) {
       setNicknameDrafts(Object.fromEntries(profiles.profiles.map((p) => [p.id, p.nickname])))
     }
@@ -191,6 +193,7 @@ export function SiteSettingsDrawer({
       const result = await profiles.create(newGameUid.trim(), newNickname.trim())
       setNewGameUid('')
       setNewNickname('')
+      setCreateOpen(false)
       setProfileMsg(t('profiles.created'))
       syncActive(result.activeProfileId)
     } catch (err) {
@@ -248,15 +251,20 @@ export function SiteSettingsDrawer({
       const result = await profiles.setActive(profileId)
       syncActive(result.activeProfileId)
       onClose()
-      window.location.reload()
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
       setProfileBusy(false)
     }
   }
 
   const openAdmins = async (profileId: string) => {
     if (!profiles) return
+    if (adminsFor === profileId) {
+      setAdminsFor(null)
+      setMembers([])
+      return
+    }
     setAdminsFor(profileId)
     setAdminUsername('')
     setProfileError('')
@@ -289,6 +297,25 @@ export function SiteSettingsDrawer({
     try {
       await profiles.removeAdmin(adminsFor, userIdToRemove)
       setMembers(await profiles.listAdmins(adminsFor))
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  const handleLeaveProfile = async (profile: GameProfile) => {
+    if (!profiles || !userId) return
+    if (!window.confirm(t('profiles.leaveConfirm', { nickname: profile.nickname }))) return
+    setProfileBusy(true)
+    setProfileError('')
+    try {
+      const data = await profiles.removeAdmin(profile.id, userId)
+      if (adminsFor === profile.id) {
+        setAdminsFor(null)
+        setMembers([])
+      }
+      syncActive(data?.activeProfileId ?? null)
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : t('profiles.saveFail'))
     } finally {
@@ -483,101 +510,85 @@ export function SiteSettingsDrawer({
       )}
 
       {signedIn && profiles && (
-        <SettingsSection title={t('profiles.title')} tip={t('profiles.hint')} tipAriaLabel={t('profiles.hintAria')}>
-          <ul className="settings-profiles">
-            {profiles.profiles.length === 0 && (
-              <li className="settings-profiles__empty">{t('profiles.empty')}</li>
-            )}
-            {profiles.profiles.map((profile) => {
-              const active = profile.id === profiles.activeProfileId
-              return (
-                <li key={profile.id} className={`settings-profiles__row${active ? ' is-active' : ''}`}>
-                  <div className="settings-profiles__main">
-                    <input
-                      className="input"
-                      value={nicknameDrafts[profile.id] ?? profile.nickname}
-                      onChange={(e) =>
-                        setNicknameDrafts((prev) => ({ ...prev, [profile.id]: e.target.value }))
-                      }
-                      onBlur={() => void handleRenameProfile(profile)}
-                      aria-label={t('profiles.nickname')}
-                    />
-                    <span className="settings-profiles__uid">{profile.gameUid}</span>
-                    {active && (
-                      <span className="settings-device-accounts__badge">{t('profiles.active')}</span>
-                    )}
-                  </div>
-                  <div className="settings-profiles__actions">
-                    {!active && (
-                      <button
-                        type="button"
-                        className="btn btn--outline btn--sm"
-                        disabled={profileBusy}
-                        onClick={() => void handleSetActive(profile.id)}
-                      >
-                        {t('profiles.setActive')}
-                      </button>
-                    )}
-                    {(profile.role === 'owner' || profile.role === 'admin') && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={profileBusy}
-                        onClick={() => void openAdmins(profile.id)}
-                      >
-                        {t('profiles.admins')}
-                      </button>
-                    )}
-                    {profile.role === 'owner' && (
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={profileBusy}
-                        onClick={() => void handleDeleteProfile(profile)}
-                      >
-                        {t('common.delete')}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-
-          <form className="settings-profiles__create" onSubmit={(e) => void handleCreateProfile(e)}>
-            <label className="settings-add-account__field">
-              <span>{t('profiles.gameUid')}</span>
-              <input
-                className="input"
-                value={newGameUid}
-                onChange={(e) => setNewGameUid(e.target.value)}
-                required
-                minLength={1}
-                maxLength={64}
-                pattern="[a-zA-Z0-9_-]+"
-                autoComplete="off"
-              />
-            </label>
-            <label className="settings-add-account__field">
-              <span>{t('profiles.nickname')}</span>
-              <input
-                className="input"
-                value={newNickname}
-                onChange={(e) => setNewNickname(e.target.value)}
-                required
-                minLength={1}
-                maxLength={64}
-                autoComplete="off"
-              />
-            </label>
-            <button
-              type="submit"
-              className="btn btn--primary btn--sm"
-              disabled={profileBusy || !newGameUid.trim() || !newNickname.trim()}
-            >
-              {profileBusy ? t('auth.submitting') : t('profiles.add')}
-            </button>
-          </form>
+        <SettingsSection
+          title={t('profiles.title')}
+          tip={t('profiles.hint')}
+          tipAriaLabel={t('profiles.hintAria')}
+          titleActions={
+            profiles.profiles.length >= 1 ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm settings-section__add-btn"
+                aria-label={t('profiles.addOpen')}
+                aria-expanded={createOpen}
+                disabled={profileBusy}
+                onClick={() => {
+                  setCreateOpen((v) => !v)
+                  if (createOpen) {
+                    setClaimTarget(null)
+                    setProfileError('')
+                  }
+                }}
+              >
+                {createOpen ? '×' : '+'}
+              </button>
+            ) : undefined
+          }
+        >
+          {(profiles.profiles.length === 0 || createOpen) && (
+            <form className="settings-profiles__create" onSubmit={(e) => void handleCreateProfile(e)}>
+              <label className="settings-add-account__field">
+                <span>{t('profiles.gameUid')}</span>
+                <input
+                  className="input"
+                  value={newGameUid}
+                  onChange={(e) => setNewGameUid(e.target.value)}
+                  required
+                  minLength={1}
+                  maxLength={64}
+                  pattern="[a-zA-Z0-9_-]+"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="settings-add-account__field">
+                <span>{t('profiles.nickname')}</span>
+                <input
+                  className="input"
+                  value={newNickname}
+                  onChange={(e) => setNewNickname(e.target.value)}
+                  required
+                  minLength={1}
+                  maxLength={64}
+                  autoComplete="off"
+                />
+              </label>
+              <div className="settings-profiles__create-actions">
+                <button
+                  type="submit"
+                  className="btn btn--primary btn--sm"
+                  disabled={profileBusy || !newGameUid.trim() || !newNickname.trim()}
+                >
+                  {profileBusy ? t('auth.submitting') : t('profiles.add')}
+                </button>
+                {profiles.profiles.length >= 1 && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={profileBusy}
+                    onClick={() => {
+                      setCreateOpen(false)
+                      setClaimTarget(null)
+                      setNewGameUid('')
+                      setNewNickname('')
+                      setProfileError('')
+                    }}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
 
           {claimTarget && (
             <form className="settings-profiles__claim" onSubmit={(e) => void handleClaim(e)}>
@@ -608,52 +619,139 @@ export function SiteSettingsDrawer({
             </form>
           )}
 
-          {adminsFor && (
-            <div className="settings-profiles__admins">
-              <h4>{t('profiles.adminsTitle')}</h4>
-              <ul className="settings-profiles__admin-list">
-                {members.map((m) => (
-                  <li key={m.userId}>
-                    <span>
-                      {m.username} ({m.role})
-                    </span>
-                    {m.role !== 'owner' && (
+          <ul className="settings-profiles">
+            {profiles.profiles.map((profile) => {
+              const active = profile.id === profiles.activeProfileId
+              const panelOpen = adminsFor === profile.id
+              return (
+                <li key={profile.id} className={`settings-profiles__row${active ? ' is-active' : ''}`}>
+                  <div className="settings-profiles__main">
+                    <input
+                      className="input"
+                      value={nicknameDrafts[profile.id] ?? profile.nickname}
+                      onChange={(e) =>
+                        setNicknameDrafts((prev) => ({ ...prev, [profile.id]: e.target.value }))
+                      }
+                      onBlur={() => void handleRenameProfile(profile)}
+                      aria-label={t('profiles.nickname')}
+                      disabled={profile.role !== 'owner' && profile.role !== 'admin'}
+                    />
+                    <span className="settings-profiles__uid">{profile.gameUid}</span>
+                    {active && (
+                      <span className="settings-device-accounts__badge">{t('profiles.active')}</span>
+                    )}
+                  </div>
+                  <div className="settings-profiles__actions">
+                    {!active && (
+                      <button
+                        type="button"
+                        className="btn btn--outline btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void handleSetActive(profile.id)}
+                      >
+                        {t('profiles.setActive')}
+                      </button>
+                    )}
+                    {profile.role === 'owner' && (
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
                         disabled={profileBusy}
-                        onClick={() => void handleRemoveAdmin(m.userId)}
+                        aria-expanded={panelOpen}
+                        onClick={() => void openAdmins(profile.id)}
+                      >
+                        {t('profiles.admins')}
+                      </button>
+                    )}
+                    {profile.role === 'admin' && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void handleLeaveProfile(profile)}
+                      >
+                        {t('profiles.leave')}
+                      </button>
+                    )}
+                    {profile.role === 'owner' && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={profileBusy}
+                        onClick={() => void handleDeleteProfile(profile)}
                       >
                         {t('common.delete')}
                       </button>
                     )}
-                  </li>
-                ))}
-              </ul>
-              <form className="settings-profiles__admin-add" onSubmit={(e) => void handleAddAdmin(e)}>
-                <input
-                  className="input"
-                  value={adminUsername}
-                  onChange={(e) => setAdminUsername(e.target.value)}
-                  placeholder={t('profiles.adminUsername')}
-                  required
-                  minLength={3}
-                  maxLength={32}
-                  pattern="[a-zA-Z0-9_-]+"
-                />
-                <button type="submit" className="btn btn--primary btn--sm" disabled={profileBusy}>
-                  {t('profiles.addAdmin')}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  onClick={() => setAdminsFor(null)}
-                >
-                  {t('common.cancel')}
-                </button>
-              </form>
-            </div>
-          )}
+                  </div>
+
+                  <div
+                    className={`settings-profiles__admins-panel${panelOpen ? ' is-open' : ''}`}
+                    aria-hidden={!panelOpen}
+                  >
+                    <div className="settings-profiles__admins-panel-inner">
+                      {panelOpen && (
+                        <div className="settings-profiles__admins">
+                          <h4>{t('profiles.adminsTitle')}</h4>
+                          <ul className="settings-profiles__admin-list">
+                            {members.map((m) => (
+                              <li key={m.userId}>
+                                <span>
+                                  {m.username} ({m.role})
+                                </span>
+                                {m.role !== 'owner' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    disabled={profileBusy}
+                                    onClick={() => void handleRemoveAdmin(m.userId)}
+                                  >
+                                    {t('common.delete')}
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                          <form
+                            className="settings-profiles__admin-add"
+                            onSubmit={(e) => void handleAddAdmin(e)}
+                          >
+                            <input
+                              className="input"
+                              value={adminUsername}
+                              onChange={(e) => setAdminUsername(e.target.value)}
+                              placeholder={t('profiles.adminUsername')}
+                              required
+                              minLength={3}
+                              maxLength={32}
+                              pattern="[a-zA-Z0-9_-]+"
+                            />
+                            <button
+                              type="submit"
+                              className="btn btn--primary btn--sm"
+                              disabled={profileBusy}
+                            >
+                              {t('profiles.addAdmin')}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => {
+                                setAdminsFor(null)
+                                setMembers([])
+                              }}
+                            >
+                              {t('common.cancel')}
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
 
           {profileMsg && <p className="settings-feedback">{profileMsg}</p>}
           {profileError && <p className="settings-feedback settings-feedback--error">{profileError}</p>}

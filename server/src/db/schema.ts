@@ -77,6 +77,8 @@ export const profiles = pgTable('profiles', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Soft-delete: profile stays for trade trends; members detached. */
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 })
 
 export const profileMembers = pgTable(

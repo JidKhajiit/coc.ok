@@ -99,6 +99,13 @@
       "when": 1757560000000,
       "tag": "0013_game_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1757570000000,
+      "tag": "0014_profile_soft_delete",
+      "breakpoints": true
     }
   ]
 }
