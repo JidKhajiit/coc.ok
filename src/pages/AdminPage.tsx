@@ -578,7 +578,7 @@ function parseCardsText(text: string) {
         name,
         rarity,
         color,
-        unknownName: unknownRaw.toLowerCase() === 'unknown',
+        unknownName: (unknownRaw ?? '').toLowerCase() === 'unknown',
       }
     })
 }
