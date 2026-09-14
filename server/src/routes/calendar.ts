@@ -6,9 +6,11 @@ import {
   createSiteEventType,
   deleteSiteEventScheduleEntry,
   deleteSiteEventType,
+  getSiteCalendarSettings,
   isIsoDate,
   listSiteEventSchedule,
   listSiteEventTypes,
+  updateSiteCalendarSettings,
   updateSiteEventScheduleEntry,
   updateSiteEventType,
 } from '../lib/calendar.js'
@@ -23,6 +25,8 @@ const slugSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Invalid slug')
+
+const iconSchema = z.string().trim().min(1).max(16).nullable().optional()
 
 const createTypeSchema = z.object({
   slug: slugSchema,
@@ -42,6 +46,7 @@ const createTypeSchema = z.object({
     .regex(/^#[0-9A-Fa-f]{3,8}$/, 'Color must be a hex value')
     .nullable()
     .optional(),
+  icon: iconSchema,
 })
 
 const updateTypeSchema = z.object({
@@ -61,6 +66,7 @@ const updateTypeSchema = z.object({
     .regex(/^#[0-9A-Fa-f]{3,8}$/, 'Color must be a hex value')
     .nullable()
     .optional(),
+  icon: iconSchema,
 })
 
 const phaseFlagSchema = z.number().int().min(0).max(1)
@@ -123,7 +129,33 @@ export function createCalendarRoutes(db: Db) {
     return c.json({ types })
   })
 
+  // Public: display settings (home upcoming limit, etc.)
+  app.get('/settings', async (c) => {
+    const settings = await getSiteCalendarSettings(db)
+    return c.json({ settings })
+  })
+
   // ── Admin ──────────────────────────────────────────────────────────────────
+
+  app.get('/admin/settings', requirePermission('calendar:manage'), async (c) => {
+    const settings = await getSiteCalendarSettings(db)
+    return c.json({ settings })
+  })
+
+  app.put('/admin/settings', requirePermission('calendar:manage'), async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const parsed = z
+      .object({
+        upcomingLimit: z.number().int().min(1).max(50),
+      })
+      .safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+    }
+
+    const settings = await updateSiteCalendarSettings(db, parsed.data)
+    return c.json({ settings })
+  })
 
   app.get('/admin/types', requirePermission('calendar:manage'), async (c) => {
     const types = await listSiteEventTypes(db)
@@ -144,6 +176,7 @@ export function createCalendarRoutes(db: Db) {
         nameEn: parsed.data.nameEn,
         path: parsed.data.path === undefined ? null : parsed.data.path,
         color: parsed.data.color === undefined ? null : parsed.data.color,
+        icon: parsed.data.icon === undefined ? null : parsed.data.icon,
       })
       return c.json({ type }, 201)
     } catch (err) {

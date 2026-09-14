@@ -812,6 +812,7 @@ export type SiteEventType = {
   nameEn: string
   path: string | null
   color: string | null
+  icon: string | null
   createdAt: string
 }
 
@@ -829,6 +830,7 @@ export type SiteEventScheduleEntry = {
     nameEn: string
     path: string | null
     color: string | null
+    icon: string | null
   }
 }
 
@@ -864,6 +866,7 @@ export async function createAdminCalendarType(data: {
   nameEn: string
   path?: string | null
   color?: string | null
+  icon?: string | null
 }): Promise<SiteEventType> {
   const { type } = await request<{ type: SiteEventType }>('/api/calendar/admin/types', {
     method: 'POST',
@@ -879,6 +882,7 @@ export async function updateAdminCalendarType(
     nameEn?: string
     path?: string | null
     color?: string | null
+    icon?: string | null
   },
 ): Promise<SiteEventType> {
   const { type } = await request<{ type: SiteEventType }>(
@@ -932,5 +936,31 @@ export async function updateAdminCalendarSchedule(
 
 export async function deleteAdminCalendarSchedule(id: string): Promise<void> {
   await request(`/api/calendar/admin/schedule/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export type SiteCalendarSettings = {
+  upcomingLimit: number
+}
+
+export async function getCalendarSettings(): Promise<SiteCalendarSettings> {
+  const { settings } = await request<{ settings: SiteCalendarSettings }>('/api/calendar/settings')
+  return settings
+}
+
+export async function getAdminCalendarSettings(): Promise<SiteCalendarSettings> {
+  const { settings } = await request<{ settings: SiteCalendarSettings }>(
+    '/api/calendar/admin/settings',
+  )
+  return settings
+}
+
+export async function updateAdminCalendarSettings(data: {
+  upcomingLimit: number
+}): Promise<SiteCalendarSettings> {
+  const { settings } = await request<{ settings: SiteCalendarSettings }>(
+    '/api/calendar/admin/settings',
+    { method: 'PUT', body: JSON.stringify(data) },
+  )
+  return settings
 }
 

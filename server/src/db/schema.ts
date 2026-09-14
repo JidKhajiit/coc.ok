@@ -339,8 +339,10 @@ export const siteEventTypes = pgTable('site_event_types', {
   nameEn: text('name_en').notNull(),
   /** Optional deep-link into the site, e.g. `/cozy-farm`. */
   path: text('path'),
-  /** Optional accent color for calendar markers (CSS color). */
+  /** Optional accent color for calendar markers / home highlight (CSS color). */
   color: text('color'),
+  /** Optional emoji/short icon shown on the home event row. */
+  icon: text('icon'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -367,3 +369,10 @@ export const siteEventSchedule = pgTable(
     index('site_event_schedule_type_idx').on(t.eventTypeId),
   ],
 )
+
+/** Singleton-style calendar display settings (one row). */
+export const siteCalendarSettings = pgTable('site_calendar_settings', {
+  id: integer('id').primaryKey().default(1),
+  /** Max upcoming events shown on the home page (nearest first). */
+  upcomingLimit: integer('upcoming_limit').notNull().default(5),
+})

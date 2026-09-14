@@ -4190,26 +4190,58 @@ h4 {
 }
 
 .home-events-list__item {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+}
+
+.home-events-list__link,
+.home-events-list__row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 12px;
   padding: 12px 14px;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--surface-strong);
+  text-decoration: none;
+  color: inherit;
 }
 
 .home-events-list__link {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-decoration: none;
-  color: inherit;
-  transition: color 0.15s;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.home-events-list__link.has-color,
+.home-events-list__row.has-color {
+  background: color-mix(in srgb, var(--event-color) 18%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--event-color) 50%, var(--line));
+  box-shadow: inset 3px 0 0 var(--event-color);
 }
 
 .home-events-list__link:hover .home-events-list__name {
   color: var(--accent);
+}
+
+.home-events-list__link.has-color:hover .home-events-list__name {
+  color: color-mix(in srgb, var(--event-color) 70%, var(--ink));
+}
+
+.home-events-list__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.home-events-list__icon {
+  flex: 0 0 auto;
+  font-size: 1.45rem;
+  line-height: 1;
+  opacity: 0.92;
 }
 
 .home-events-list__name {

@@ -127,6 +127,20 @@
       "when": 1757600000000,
       "tag": "0017_schedule_phases_one_day",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1757610000000,
+      "tag": "0018_calendar_upcoming_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1757620000000,
+      "tag": "0019_event_type_icon",
+      "breakpoints": true
     }
   ]
 }
