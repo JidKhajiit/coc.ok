@@ -13,6 +13,7 @@ type TypeForm = {
   nameEn: string
   path: string
   color: string
+  icon: string
 }
 
 type ScheduleForm = {
@@ -29,6 +30,7 @@ const EMPTY_TYPE: TypeForm = {
   nameEn: '',
   path: '',
   color: '',
+  icon: '',
 }
 
 const EMPTY_SCHEDULE: ScheduleForm = {
@@ -50,6 +52,8 @@ export function AdminCalendarTab() {
 
   const [types, setTypes] = useState<SiteEventType[]>([])
   const [schedule, setSchedule] = useState<SiteEventScheduleEntry[]>([])
+  const [upcomingLimit, setUpcomingLimit] = useState('5')
+  const [savingSettings, setSavingSettings] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string | null>(null)
@@ -66,12 +70,14 @@ export function AdminCalendarTab() {
     setLoading(true)
     setError(null)
     try {
-      const [nextTypes, nextSchedule] = await Promise.all([
+      const [nextTypes, nextSchedule, settings] = await Promise.all([
         api.listAdminCalendarTypes(),
         api.listAdminCalendarSchedule(),
+        api.getAdminCalendarSettings(),
       ])
       setTypes(nextTypes)
       setSchedule(nextSchedule)
+      setUpcomingLimit(String(settings.upcomingLimit))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка загрузки календаря')
     } finally {
@@ -101,6 +107,7 @@ export function AdminCalendarTab() {
       nameEn: type.nameEn,
       path: type.path ?? '',
       color: type.color ?? '',
+      icon: type.icon ?? '',
     })
     setResult(null)
     setError(null)
@@ -119,6 +126,26 @@ export function AdminCalendarTab() {
     setError(null)
   }
 
+  const handleSaveSettings = async () => {
+    setSavingSettings(true)
+    setError(null)
+    setResult(null)
+    try {
+      const limit = Number.parseInt(upcomingLimit, 10)
+      if (!Number.isFinite(limit) || limit < 1 || limit > 50) {
+        setError('Лимит предстоящих событий: целое число от 1 до 50')
+        return
+      }
+      const settings = await api.updateAdminCalendarSettings({ upcomingLimit: limit })
+      setUpcomingLimit(String(settings.upcomingLimit))
+      setResult('Настройки календаря сохранены')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить настройки')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
   const handleSaveType = async () => {
     setSavingType(true)
     setError(null)
@@ -129,6 +156,7 @@ export function AdminCalendarTab() {
         nameEn: typeForm.nameEn.trim(),
         path: normalizeOptional(typeForm.path),
         color: normalizeOptional(typeForm.color),
+        icon: normalizeOptional(typeForm.icon),
       }
       if (editingTypeId) {
         await api.updateAdminCalendarType(editingTypeId, payload)
@@ -227,6 +255,36 @@ export function AdminCalendarTab() {
 
       {canManage && (
         <div className="admin-form">
+          <h3 className="admin-form__title">Настройки главной</h3>
+          <div className="admin-form__field">
+            <label>Сколько предстоящих событий показывать</label>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              value={upcomingLimit}
+              onChange={(e) => setUpcomingLimit(e.target.value)}
+            />
+            <small className="admin-muted">
+              На главной в блоке «Предстоящие» — ближайшие по дате начала, не больше этого числа.
+            </small>
+          </div>
+          <div className="admin-form__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={savingSettings}
+              onClick={() => void handleSaveSettings()}
+            >
+              {savingSettings ? 'Сохранение…' : 'Сохранить лимит'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canManage && (
+        <div className="admin-form">
           <h3 className="admin-form__title">
             {editingTypeId ? 'Редактирование типа эвента' : 'Новый тип эвента'}
           </h3>
@@ -273,13 +331,26 @@ export function AdminCalendarTab() {
           </div>
 
           <div className="admin-form__field">
-            <label>Цвет маркера (hex, опционально)</label>
+            <label>Цвет (hex, опционально)</label>
             <input
               type="text"
               value={typeForm.color}
               onChange={(e) => setTypeForm((prev) => ({ ...prev, color: e.target.value }))}
               placeholder="#2f7a55"
             />
+            <small className="admin-muted">Подсветка блока на главной и полоски в календаре.</small>
+          </div>
+
+          <div className="admin-form__field">
+            <label>Иконка (опционально)</label>
+            <input
+              type="text"
+              value={typeForm.icon}
+              onChange={(e) => setTypeForm((prev) => ({ ...prev, icon: e.target.value }))}
+              placeholder="🎣"
+              maxLength={16}
+            />
+            <small className="admin-muted">Эмодзи или короткий символ справа в блоке на главной.</small>
           </div>
 
           <div className="admin-form__actions">
@@ -315,6 +386,7 @@ export function AdminCalendarTab() {
               <tr>
                 <th>Название</th>
                 <th>Slug</th>
+                <th>Иконка</th>
                 <th>Путь</th>
                 <th />
               </tr>
@@ -333,6 +405,7 @@ export function AdminCalendarTab() {
                   <td>
                     <code>{type.slug}</code>
                   </td>
+                  <td>{type.icon ?? '—'}</td>
                   <td>{type.path ?? '—'}</td>
                   <td className="admin-table__actions">
                     {canManage && (

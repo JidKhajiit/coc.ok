@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { I18nProvider } from '../i18n'
 import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
@@ -18,6 +18,8 @@ type SiteEvent = {
   /** ISO date YYYY-MM-DD */
   end: string
   path?: string
+  color?: string
+  icon?: string
 }
 
 type Resource = {
@@ -128,6 +130,46 @@ function isUpcomingEvent(event: SiteEvent, todayIso: string): boolean {
   return Boolean(event.start && todayIso < event.start)
 }
 
+function daysRu(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'день'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'дня'
+  return 'дней'
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const raw = hex.trim().replace('#', '')
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((ch) => `${ch}${ch}`)
+          .join('')
+      : raw
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null
+  const value = Number.parseInt(full, 16)
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  }
+}
+
+function eventHighlightStyle(color?: string): CSSProperties | undefined {
+  if (!color) return undefined
+  const rgb = hexToRgb(color)
+  if (!rgb) {
+    return { ['--event-color' as string]: color } as CSSProperties
+  }
+  return {
+    ['--event-color' as string]: color,
+    backgroundColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`,
+    borderColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`,
+    boxShadow: `inset 3px 0 0 ${color}`,
+  } as CSSProperties
+}
+
 function EventList({
   events,
   isRu,
@@ -160,24 +202,39 @@ function EventList({
                 ? ` · ещё ${days} ${daysRu(days)}`
                 : ` · ${days} day${days === 1 ? '' : 's'} left`
             : null
-        const content = (
-          <>
+        const main = (
+          <div className="home-events-list__main">
             <span className="home-events-list__name">{title}</span>
             <span className="home-events-list__dates">
               {formatEventDates(event, isRu)}
               {relative && <span className="home-events-list__left">{relative}</span>}
             </span>
-          </>
+          </div>
         )
+        const icon = event.icon ? (
+          <span className="home-events-list__icon" aria-hidden>
+            {event.icon}
+          </span>
+        ) : null
+        const highlightClass = event.color ? ' has-color' : ''
+        const highlightStyle = eventHighlightStyle(event.color)
 
         return (
           <li key={event.id} className="home-events-list__item">
             {event.path ? (
-              <Link to={event.path} className="home-events-list__link">
-                {content}
+              <Link
+                to={event.path}
+                className={`home-events-list__link${highlightClass}`}
+                style={highlightStyle}
+              >
+                {main}
+                {icon}
               </Link>
             ) : (
-              content
+              <div className={`home-events-list__row${highlightClass}`} style={highlightStyle}>
+                {main}
+                {icon}
+              </div>
             )}
           </li>
         )
@@ -186,19 +243,15 @@ function EventList({
   )
 }
 
-function daysRu(n: number): string {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return 'день'
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'дня'
-  return 'дней'
-}
-
 function HomeContent() {
   const { locale, setLocale } = usePersistedLocale()
   const isRu = locale === 'ru'
   const [calendarEvents, setCalendarEvents] = useState<SiteEvent[]>([])
   const [cardTradeEvents, setCardTradeEvents] = useState<SiteEvent[]>([])
+  const [eventStylesByKey, setEventStylesByKey] = useState<
+    Record<string, { color?: string; icon?: string }>
+  >({})
+  const [upcomingLimit, setUpcomingLimit] = useState(5)
   const [todayIso, setTodayIso] = useState(() => getTodayIso())
 
   useEffect(() => {
@@ -214,6 +267,8 @@ function HomeContent() {
             start: entry.startDate,
             end: entry.endDate,
             path: entry.event.path ?? undefined,
+            color: entry.event.color ?? undefined,
+            icon: entry.event.icon ?? undefined,
           })),
         )
       })
@@ -228,12 +283,55 @@ function HomeContent() {
   useEffect(() => {
     let cancelled = false
     void api
+      .listCalendarTypes()
+      .then((types) => {
+        if (cancelled) return
+        const map: Record<string, { color?: string; icon?: string }> = {}
+        for (const type of types) {
+          const style = {
+            color: type.color ?? undefined,
+            icon: type.icon ?? undefined,
+          }
+          map[type.slug] = style
+          if (type.path) {
+            map[type.path] = style
+            map[type.path.replace(/^\//, '')] = style
+          }
+        }
+        setEventStylesByKey(map)
+      })
+      .catch(() => {
+        if (!cancelled) setEventStylesByKey({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .getCalendarSettings()
+      .then((settings) => {
+        if (!cancelled) setUpcomingLimit(settings.upcomingLimit)
+      })
+      .catch(() => {
+        if (!cancelled) setUpcomingLimit(5)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void api
       .listCardTradeEvents()
       .then((events) => {
         if (cancelled) return
         setCardTradeEvents(
           events.map((event) => ({
-            id: event.slug,
+            id: `card-trade:${event.slug}`,
             name: { ru: event.name, en: event.name },
             start: event.startDate,
             end: event.endDate,
@@ -264,10 +362,18 @@ function HomeContent() {
     }
   }, [todayIso])
 
-  const allEvents = useMemo(
-    () => [...calendarEvents, ...cardTradeEvents],
-    [calendarEvents, cardTradeEvents],
-  )
+  const allEvents = useMemo(() => {
+    const styledCardTrades = cardTradeEvents.map((event) => {
+      const slug = event.path?.replace(/^\//, '') ?? event.id
+      const style = eventStylesByKey[slug] ?? eventStylesByKey[event.path ?? '']
+      return {
+        ...event,
+        color: event.color ?? style?.color,
+        icon: event.icon ?? style?.icon,
+      }
+    })
+    return [...calendarEvents, ...styledCardTrades]
+  }, [calendarEvents, cardTradeEvents, eventStylesByKey])
   const currentEvents = useMemo(
     () =>
       allEvents
@@ -279,8 +385,9 @@ function HomeContent() {
     () =>
       allEvents
         .filter((event) => isUpcomingEvent(event, todayIso))
-        .sort((a, b) => (a.start ?? a.end).localeCompare(b.start ?? b.end) || a.end.localeCompare(b.end)),
-    [allEvents, todayIso],
+        .sort((a, b) => (a.start ?? a.end).localeCompare(b.start ?? b.end) || a.end.localeCompare(b.end))
+        .slice(0, upcomingLimit),
+    [allEvents, todayIso, upcomingLimit],
   )
 
   return (

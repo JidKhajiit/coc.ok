@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, lte } from 'drizzle-orm'
 import type { Db } from '../db/index.js'
-import { siteEventSchedule, siteEventTypes } from '../db/schema.js'
+import { siteCalendarSettings, siteEventSchedule, siteEventTypes } from '../db/schema.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -11,6 +11,7 @@ export type SiteEventType = {
   nameEn: string
   path: string | null
   color: string | null
+  icon: string | null
   createdAt: string
 }
 
@@ -28,6 +29,7 @@ export type SiteEventScheduleEntry = {
     nameEn: string
     path: string | null
     color: string | null
+    icon: string | null
   }
 }
 
@@ -73,6 +75,7 @@ function mapType(row: typeof siteEventTypes.$inferSelect): SiteEventType {
     nameEn: row.nameEn,
     path: row.path,
     color: row.color,
+    icon: row.icon,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -91,6 +94,7 @@ function mapScheduleEntry(
     nameEn: string
     path: string | null
     color: string | null
+    icon: string | null
   },
 ): SiteEventScheduleEntry {
   return {
@@ -107,6 +111,7 @@ function mapScheduleEntry(
       nameEn: row.nameEn,
       path: row.path,
       color: row.color,
+      icon: row.icon,
     },
   }
 }
@@ -124,6 +129,7 @@ export async function createSiteEventType(
     nameEn: string
     path?: string | null
     color?: string | null
+    icon?: string | null
   },
 ): Promise<SiteEventType> {
   const [row] = await db
@@ -134,6 +140,7 @@ export async function createSiteEventType(
       nameEn: input.nameEn,
       path: input.path ?? null,
       color: input.color ?? null,
+      icon: input.icon ?? null,
     })
     .returning()
   return mapType(row)
@@ -147,6 +154,7 @@ export async function updateSiteEventType(
     nameEn?: string
     path?: string | null
     color?: string | null
+    icon?: string | null
   },
 ): Promise<SiteEventType | null> {
   const updates: Partial<typeof siteEventTypes.$inferInsert> = {}
@@ -154,6 +162,7 @@ export async function updateSiteEventType(
   if (input.nameEn !== undefined) updates.nameEn = input.nameEn
   if (input.path !== undefined) updates.path = input.path
   if (input.color !== undefined) updates.color = input.color
+  if (input.icon !== undefined) updates.icon = input.icon
 
   if (Object.keys(updates).length === 0) {
     const [existing] = await db.select().from(siteEventTypes).where(eq(siteEventTypes.id, id)).limit(1)
@@ -190,6 +199,7 @@ async function selectScheduleJoined(db: Db, where?: ReturnType<typeof and>) {
       nameEn: siteEventTypes.nameEn,
       path: siteEventTypes.path,
       color: siteEventTypes.color,
+      icon: siteEventTypes.icon,
     })
     .from(siteEventSchedule)
     .innerJoin(siteEventTypes, eq(siteEventSchedule.eventTypeId, siteEventTypes.id))
@@ -254,6 +264,7 @@ export async function createSiteEventScheduleEntry(
     nameEn: type.nameEn,
     path: type.path,
     color: type.color,
+    icon: type.icon,
   })
 }
 
@@ -321,4 +332,46 @@ export async function deleteSiteEventScheduleEntry(db: Db, id: string): Promise<
     .where(eq(siteEventSchedule.id, id))
     .returning({ id: siteEventSchedule.id })
   return deleted.length > 0
+}
+
+export type SiteCalendarSettings = {
+  upcomingLimit: number
+}
+
+const DEFAULT_UPCOMING_LIMIT = 5
+
+async function ensureCalendarSettings(db: Db): Promise<typeof siteCalendarSettings.$inferSelect> {
+  const [existing] = await db.select().from(siteCalendarSettings).where(eq(siteCalendarSettings.id, 1)).limit(1)
+  if (existing) return existing
+
+  const [created] = await db
+    .insert(siteCalendarSettings)
+    .values({ id: 1, upcomingLimit: DEFAULT_UPCOMING_LIMIT })
+    .onConflictDoNothing()
+    .returning()
+
+  if (created) return created
+
+  const [row] = await db.select().from(siteCalendarSettings).where(eq(siteCalendarSettings.id, 1)).limit(1)
+  if (!row) throw new Error('Failed to ensure calendar settings')
+  return row
+}
+
+export async function getSiteCalendarSettings(db: Db): Promise<SiteCalendarSettings> {
+  const row = await ensureCalendarSettings(db)
+  return { upcomingLimit: row.upcomingLimit }
+}
+
+export async function updateSiteCalendarSettings(
+  db: Db,
+  input: { upcomingLimit: number },
+): Promise<SiteCalendarSettings> {
+  await ensureCalendarSettings(db)
+  const [row] = await db
+    .update(siteCalendarSettings)
+    .set({ upcomingLimit: input.upcomingLimit })
+    .where(eq(siteCalendarSettings.id, 1))
+    .returning()
+  if (!row) throw new Error('Failed to update calendar settings')
+  return { upcomingLimit: row.upcomingLimit }
 }
