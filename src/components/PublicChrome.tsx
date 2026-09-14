@@ -6,6 +6,7 @@ import { useI18n, type Locale } from '../i18n'
 import { BRAND_NAME } from '../brand'
 import { SiteSettingsDrawer } from './settings/SiteSettingsDrawer'
 import { UserAvatar } from './UserAvatar'
+import { CalendarIcon } from './CalendarIcon'
 import { loginPath } from '../lib/loginRedirect'
 
 type Props = {
@@ -54,6 +55,15 @@ export function PublicChrome({
         </nav>
 
         <div className="public-chrome__actions">
+          <Link
+            to="/calendar"
+            className="public-chrome__btn public-chrome__btn--icon"
+            aria-label={t('calendar.nav')}
+            title={t('calendar.nav')}
+          >
+            <CalendarIcon className="public-chrome__icon-svg" />
+          </Link>
+
           {showBackToApp && auth.user && (
             <Link to="/card-trades" className="public-chrome__app-link">
               <UserAvatar

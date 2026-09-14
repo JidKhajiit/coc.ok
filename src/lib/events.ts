@@ -12,6 +12,9 @@ export const RESERVED_SITE_SLUGS = new Set([
   'guides',
   'database',
   'tier-list',
+  'calendar',
+  'login',
+  'terms',
 ])
 
 /** Static (non-API) events and their app kind. */

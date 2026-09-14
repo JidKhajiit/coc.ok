@@ -4,6 +4,7 @@ import { useI18n, type Locale } from '../../i18n'
 import { BRAND_NAME } from '../../brand'
 import { SiteSettingsDrawer } from './SiteSettingsDrawer'
 import { UserAvatar } from '../UserAvatar'
+import { CalendarIcon } from '../CalendarIcon'
 import type { DeviceAccount } from '../../api/client'
 import type { useProfiles } from '../../hooks/useProfiles'
 
@@ -71,6 +72,15 @@ export function AppToolbar({
         </nav>
 
         <div className="app-toolbar__actions">
+          <Link
+            to="/calendar"
+            className="app-toolbar__btn app-toolbar__btn--icon"
+            aria-label={t('calendar.nav')}
+            title={t('calendar.nav')}
+          >
+            <CalendarIcon className="app-toolbar__icon-svg" />
+          </Link>
+
           <button
             type="button"
             className="app-toolbar__btn app-toolbar__btn--icon"

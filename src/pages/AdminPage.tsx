@@ -50,6 +50,7 @@ function AdminShell() {
   const canViewRoles = user.permissions.includes('roles:view')
   const canManageBackup = user.permissions.includes('roles:manage')
   const canManageEvents = user.permissions.includes('events:manage')
+  const canManageCalendar = user.permissions.includes('calendar:manage')
 
   return (
     <div className="app admin-app">
@@ -100,6 +101,14 @@ function AdminShell() {
             className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
           >
             Карточные эвенты
+          </NavLink>
+        )}
+        {canManageCalendar && (
+          <NavLink
+            to="/admin-panel/calendar"
+            className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+          >
+            Календарь
           </NavLink>
         )}
         <NavLink
