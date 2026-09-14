@@ -16,6 +16,7 @@ import { createAdminRoutes } from './routes/admin.js'
 import { createCozyFarmRoutes } from './routes/cozyFarm.js'
 import { ensureDefaultCardTradeEvent } from './lib/cardTradeEvents.js'
 import { createCardTradesRoutes } from './routes/cardTrades.js'
+import { createCalendarRoutes } from './routes/calendar.js'
 
 const env = loadEnv()
 const { db, client } = createDb(env.DATABASE_URL)
@@ -37,6 +38,7 @@ api.route('/card-trades/collections', createCollectionsRoutes(db))
 api.route('/card-trades/share', createShareRoutes(db))
 api.route('/admin', createAdminRoutes(db, client))
 api.route('/cozy-farm', createCozyFarmRoutes(db))
+api.route('/calendar', createCalendarRoutes(db))
 app.route('/api', api)
 
 const projectRoot = process.cwd()

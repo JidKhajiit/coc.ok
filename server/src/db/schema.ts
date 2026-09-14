@@ -326,3 +326,44 @@ export const cozyFarmVotes = pgTable(
   },
   (t) => [primaryKey({ columns: [t.listingId, t.voterUserId] })],
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site event calendar (catalog + schedule)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Finite catalog of site-wide event kinds (tournaments, cozy farm, etc.). */
+export const siteEventTypes = pgTable('site_event_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  nameRu: text('name_ru').notNull(),
+  nameEn: text('name_en').notNull(),
+  /** Optional deep-link into the site, e.g. `/cozy-farm`. */
+  path: text('path'),
+  /** Optional accent color for calendar markers (CSS color). */
+  color: text('color'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** Scheduled occurrences of catalog events on the site calendar. */
+export const siteEventSchedule = pgTable(
+  'site_event_schedule',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventTypeId: uuid('event_type_id')
+      .notNull()
+      .references(() => siteEventTypes.id, { onDelete: 'cascade' }),
+    /** ISO date YYYY-MM-DD */
+    startDate: text('start_date').notNull(),
+    /** ISO date YYYY-MM-DD */
+    endDate: text('end_date').notNull(),
+    /** 1 = first day is registration, 0 = none. */
+    registrationDays: integer('registration_days').notNull().default(0),
+    /** 1 = last day is reward collection, 0 = none. */
+    rewardDays: integer('reward_days').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('site_event_schedule_dates_idx').on(t.startDate, t.endDate),
+    index('site_event_schedule_type_idx').on(t.eventTypeId),
+  ],
+)

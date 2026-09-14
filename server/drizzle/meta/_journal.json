@@ -106,6 +106,27 @@
       "when": 1757570000000,
       "tag": "0014_profile_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1757580000000,
+      "tag": "0015_site_event_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1757590000000,
+      "tag": "0016_schedule_phases",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1757600000000,
+      "tag": "0017_schedule_phases_one_day",
+      "breakpoints": true
     }
   ]
 }

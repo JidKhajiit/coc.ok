@@ -800,3 +800,137 @@ export async function resolveProfileClaim(
     body: JSON.stringify({ action }),
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site event calendar
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SiteEventType = {
+  id: string
+  slug: string
+  nameRu: string
+  nameEn: string
+  path: string | null
+  color: string | null
+  createdAt: string
+}
+
+export type SiteEventScheduleEntry = {
+  id: string
+  eventTypeId: string
+  startDate: string
+  endDate: string
+  registrationDays: number
+  rewardDays: number
+  createdAt: string
+  event: {
+    slug: string
+    nameRu: string
+    nameEn: string
+    path: string | null
+    color: string | null
+  }
+}
+
+export async function listCalendarSchedule(range?: {
+  from: string
+  to: string
+}): Promise<SiteEventScheduleEntry[]> {
+  const params = new URLSearchParams()
+  if (range) {
+    params.set('from', range.from)
+    params.set('to', range.to)
+  }
+  const qs = params.toString()
+  const { entries } = await request<{ entries: SiteEventScheduleEntry[] }>(
+    `/api/calendar/schedule${qs ? `?${qs}` : ''}`,
+  )
+  return entries
+}
+
+export async function listCalendarTypes(): Promise<SiteEventType[]> {
+  const { types } = await request<{ types: SiteEventType[] }>('/api/calendar/types')
+  return types
+}
+
+export async function listAdminCalendarTypes(): Promise<SiteEventType[]> {
+  const { types } = await request<{ types: SiteEventType[] }>('/api/calendar/admin/types')
+  return types
+}
+
+export async function createAdminCalendarType(data: {
+  slug: string
+  nameRu: string
+  nameEn: string
+  path?: string | null
+  color?: string | null
+}): Promise<SiteEventType> {
+  const { type } = await request<{ type: SiteEventType }>('/api/calendar/admin/types', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+  return type
+}
+
+export async function updateAdminCalendarType(
+  id: string,
+  data: {
+    nameRu?: string
+    nameEn?: string
+    path?: string | null
+    color?: string | null
+  },
+): Promise<SiteEventType> {
+  const { type } = await request<{ type: SiteEventType }>(
+    `/api/calendar/admin/types/${encodeURIComponent(id)}`,
+    { method: 'PUT', body: JSON.stringify(data) },
+  )
+  return type
+}
+
+export async function deleteAdminCalendarType(id: string): Promise<void> {
+  await request(`/api/calendar/admin/types/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function listAdminCalendarSchedule(): Promise<SiteEventScheduleEntry[]> {
+  const { entries } = await request<{ entries: SiteEventScheduleEntry[] }>(
+    '/api/calendar/admin/schedule',
+  )
+  return entries
+}
+
+export async function createAdminCalendarSchedule(data: {
+  eventTypeId: string
+  startDate: string
+  endDate: string
+  registrationDays?: number
+  rewardDays?: number
+}): Promise<SiteEventScheduleEntry> {
+  const { entry } = await request<{ entry: SiteEventScheduleEntry }>(
+    '/api/calendar/admin/schedule',
+    { method: 'POST', body: JSON.stringify(data) },
+  )
+  return entry
+}
+
+export async function updateAdminCalendarSchedule(
+  id: string,
+  data: {
+    eventTypeId?: string
+    startDate?: string
+    endDate?: string
+    registrationDays?: number
+    rewardDays?: number
+  },
+): Promise<SiteEventScheduleEntry> {
+  const { entry } = await request<{ entry: SiteEventScheduleEntry }>(
+    `/api/calendar/admin/schedule/${encodeURIComponent(id)}`,
+    { method: 'PUT', body: JSON.stringify(data) },
+  )
+  return entry
+}
+
+export async function deleteAdminCalendarSchedule(id: string): Promise<void> {
+  await request(`/api/calendar/admin/schedule/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+

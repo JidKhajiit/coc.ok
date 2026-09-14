@@ -20,32 +20,6 @@ type SiteEvent = {
   path?: string
 }
 
-/** События вне card-trades, которые пока не приходят из API */
-const STATIC_EVENTS: SiteEvent[] = [
-  {
-    id: 'gold-rush-sea-ruffians',
-    name: {
-      ru: 'Турнир Золотой лихорадки: Морские грубины',
-      en: 'Gold Rush Tournament: Sea Ruffians',
-    },
-    start: '2026-09-03',
-    end: '2026-09-08',
-  },
-  {
-    id: 'fishing-race',
-    name: { ru: 'Рыбацкая гонка', en: 'Fishing Race' },
-    start: '2026-09-06',
-    end: '2026-09-08',
-  },
-  {
-    id: 'cozy-farm',
-    name: { ru: 'Уютная ферма', en: 'Cozy Farm' },
-    start: '2026-09-03',
-    end: '2026-09-05',
-    path: '/cozy-farm',
-  },
-]
-
 type Resource = {
   id: string
   icon: string
@@ -123,7 +97,6 @@ function formatDate(iso: string, isRu: boolean): string {
   return date.toLocaleDateString(isRu ? 'ru-RU' : 'en-US', {
     day: 'numeric',
     month: 'short',
-    year: 'numeric',
   })
 }
 
@@ -224,8 +197,33 @@ function daysRu(n: number): string {
 function HomeContent() {
   const { locale, setLocale } = usePersistedLocale()
   const isRu = locale === 'ru'
+  const [calendarEvents, setCalendarEvents] = useState<SiteEvent[]>([])
   const [cardTradeEvents, setCardTradeEvents] = useState<SiteEvent[]>([])
   const [todayIso, setTodayIso] = useState(() => getTodayIso())
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .listCalendarSchedule()
+      .then((entries) => {
+        if (cancelled) return
+        setCalendarEvents(
+          entries.map((entry) => ({
+            id: entry.id,
+            name: { ru: entry.event.nameRu, en: entry.event.nameEn },
+            start: entry.startDate,
+            end: entry.endDate,
+            path: entry.event.path ?? undefined,
+          })),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setCalendarEvents([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -234,14 +232,13 @@ function HomeContent() {
       .then((events) => {
         if (cancelled) return
         setCardTradeEvents(
-          events
-            .map((event) => ({
-              id: event.slug,
-              name: { ru: event.name, en: event.name },
-              start: event.startDate,
-              end: event.endDate,
-              path: `/${event.slug}`,
-            })),
+          events.map((event) => ({
+            id: event.slug,
+            name: { ru: event.name, en: event.name },
+            start: event.startDate,
+            end: event.endDate,
+            path: `/${event.slug}`,
+          })),
         )
       })
       .catch(() => {
@@ -267,7 +264,10 @@ function HomeContent() {
     }
   }, [todayIso])
 
-  const allEvents = useMemo(() => [...STATIC_EVENTS, ...cardTradeEvents], [cardTradeEvents])
+  const allEvents = useMemo(
+    () => [...calendarEvents, ...cardTradeEvents],
+    [calendarEvents, cardTradeEvents],
+  )
   const currentEvents = useMemo(
     () =>
       allEvents

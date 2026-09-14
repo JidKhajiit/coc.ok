@@ -16,6 +16,7 @@ import {
   CardTradesWishlistTab,
 } from './pages/CardTradesPage'
 import { AdminPage, AdminUsersTab, AdminRolesTab, AdminBackupTab, AdminEventsTab, AdminClaimsTab } from './pages/AdminPage'
+import { AdminCalendarTab } from './pages/AdminCalendarTab'
 import {
   SharedCollectionCollectionTab,
   SharedCollectionNeededTab,
@@ -24,6 +25,7 @@ import { VerifyEmailPage, ResetPasswordPage } from './pages/AuthEmailPages'
 import { TermsPage } from './pages/TermsPage'
 import { CozyFarmPage } from './pages/CozyFarmPage'
 import { LoginPage } from './pages/LoginPage'
+import { CalendarPage } from './pages/CalendarPage'
 import {
   collectionNeededPath,
   collectionPath,
@@ -60,6 +62,7 @@ export default function App() {
       <Route path="/" element={<HomePage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/calendar" element={<CalendarPage />} />
 
       {/* Card-trades hub + auth emails (reserved, not an event slug) */}
       <Route path="/card-trades" element={<CardTradesHubPage />} />
@@ -79,6 +82,7 @@ export default function App() {
           <Route path="roles" element={<AdminRolesTab />} />
           <Route path="backup" element={<AdminBackupTab />} />
           <Route path="events" element={<AdminEventsTab />} />
+          <Route path="calendar" element={<AdminCalendarTab />} />
           <Route path="claims" element={<AdminClaimsTab />} />
         </Route>
       </Route>
