@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth.js'
 import type { Db } from '../db/index.js'
 import { profileStates, profiles, users } from '../db/schema.js'
 import { migrateState } from '../../../shared/migrateState.js'
-import { computeCollectionStats } from '../../../shared/collectionStats.js'
+import { computeCollectionStatsFromState } from '../../../shared/collectionStats.js'
 import { countCompletedTradesToday } from '../../../shared/gameDay.js'
 import { DAILY_TRADE_INITIATION_LIMIT, EMPTY_STATE, type AppState } from '../../../shared/types.js'
 import { generateShareSlug, looksLikeOpaqueShareSlug } from '../lib/shareSlug.js'
@@ -20,7 +20,7 @@ function publicPayload(
   updatedAt: Date,
 ) {
   const migrated = migrateState(data)
-  const stats = computeCollectionStats(migrated.owned, migrated.neededBy)
+  const stats = computeCollectionStatsFromState(migrated)
   return {
     slug,
     username,
@@ -28,6 +28,7 @@ function publicPayload(
     owned: migrated.owned,
     neededBy: migrated.neededBy,
     favoriteFolders: migrated.favoriteFolders,
+    tradeOffers: migrated.tradeOffers ?? {},
     updatedAt: updatedAt.toISOString(),
     stats: {
       uniqueOwned: stats.uniqueOwned,
@@ -69,7 +70,7 @@ export function createCollectionsRoutes(db: Db) {
       .filter((row) => row.slug)
       .map((row) => {
         const migrated = migrateState(row.data)
-        const stats = computeCollectionStats(migrated.owned, migrated.neededBy)
+        const stats = computeCollectionStatsFromState(migrated)
         return {
           slug: row.slug!,
           username: row.username,

@@ -11,11 +11,15 @@ import {
 } from '../db/schema.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
-import { computeCollectionStats } from '../../../shared/collectionStats.js'
+import { computeCollectionStatsFromState } from '../../../shared/collectionStats.js'
 import { countCompletedTradesToday } from '../../../shared/gameDay.js'
 import { migrateState } from '../../../shared/migrateState.js'
 import { DAILY_TRADE_INITIATION_LIMIT, EMPTY_STATE, type AppState, type TradeRecord } from '../../../shared/types.js'
 import { cardId, type CardTradeCard, type CardTradeEventSeed, type CardTradeSet } from '../../../shared/cardTradeCatalog.js'
+import {
+  isCardNeededInCollection,
+  isCardOfferedForTrade,
+} from '../../../shared/tradeOffers.js'
 import {
   createCardTradeEvent,
   getCardTradeEventBySlug,
@@ -64,6 +68,12 @@ const potentialTradeSchema = z.object({
   createdAt: z.string().min(1).max(64),
 })
 
+const cardTradeOfferSchema = z.object({
+  disposition: z.enum(['keep', 'trade', 'surcharge', 'gift']),
+  want: z.enum(['any', 'equal_or_more', 'specific']).optional(),
+  specificCardIds: z.array(z.string().min(1).max(32)).max(200).optional(),
+})
+
 const appStateSchema = z.object({
   owned: z.record(z.string(), z.number().int().min(0).max(9999)),
   neededBy: z.record(z.string(), z.array(z.string().min(1).max(64))),
@@ -72,6 +82,7 @@ const appStateSchema = z.object({
   accounts: z.array(favoriteFolderSchema).max(50).optional(),
   trades: z.array(tradeSchema).max(10_000),
   potentialTrades: z.array(potentialTradeSchema).max(1000),
+  tradeOffers: z.record(z.string(), cardTradeOfferSchema).optional(),
   locale: z.enum(['ru', 'en']).optional(),
   tradeAttemptsLeft: z.number().int().min(0).max(3).optional(),
 })
@@ -109,6 +120,7 @@ type PublicCollectionPayload = {
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   favoriteFolders: AppState['favoriteFolders']
+  tradeOffers: NonNullable<AppState['tradeOffers']>
   updatedAt: string
   stats: {
     uniqueOwned: number
@@ -139,7 +151,7 @@ function toPublicPayload(
   event: CardTradeEventDetail,
 ): PublicCollectionPayload {
   const migrated = migrateState(data)
-  const stats = computeCollectionStats(migrated.owned, migrated.neededBy)
+  const stats = computeCollectionStatsFromState(migrated)
   return {
     slug: shareSlug,
     username,
@@ -147,6 +159,7 @@ function toPublicPayload(
     owned: migrated.owned,
     neededBy: migrated.neededBy,
     favoriteFolders: migrated.favoriteFolders,
+    tradeOffers: migrated.tradeOffers ?? {},
     updatedAt: updatedAt.toISOString(),
     stats: {
       uniqueOwned: stats.uniqueOwned,
@@ -708,18 +721,18 @@ export function createCardTradesRoutes(db: Db) {
     if (cardIdParam && role === 'needed') {
       rows = rows.filter((row) => {
         const state = migrateState(row.data)
-        return (state.neededBy[cardIdParam] ?? []).length > 0
+        return isCardNeededInCollection(state, cardIdParam)
       })
     } else if (cardIdParam && role === 'owned') {
       rows = rows.filter((row) => {
         const state = migrateState(row.data)
-        return (state.owned[cardIdParam] ?? 0) > 0
+        return isCardOfferedForTrade(state, cardIdParam)
       })
     }
 
     const collections = rows.map((row) => {
       const state = migrateState(row.data)
-      const stats = computeCollectionStats(state.owned, state.neededBy)
+      const stats = computeCollectionStatsFromState(state)
       return {
         slug: row.shareSlug,
         username: row.username,

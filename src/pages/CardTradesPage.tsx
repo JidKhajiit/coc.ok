@@ -316,6 +316,7 @@ export function CardTradesCollectionTab() {
         reservedByCard={app.reservedByCard}
         reservedPartners={app.reservedPartners}
         tradeNeedCardIds={app.tradeNeedCardIds}
+        tradeOffers={app.state.tradeOffers}
         onAdjust={app.adjustOwned}
         onToggleNeeded={app.toggleNeeded}
         onSetNeededForAll={app.setNeededForAll}
@@ -331,6 +332,9 @@ export function CardTradesCollectionTab() {
           mode="own-collection"
           qty={app.state.owned[detailCard.id] ?? 0}
           neededAccountIds={app.state.neededBy[detailCard.id] ?? []}
+          catalogCards={event.cards}
+          tradeOffer={app.state.tradeOffers?.[detailCard.id] ?? null}
+          onChangeTradeOffer={(offer) => app.setTradeOffer(detailCard.id, offer)}
           signedIn
         />
       )}

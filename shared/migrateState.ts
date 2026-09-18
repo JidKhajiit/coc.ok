@@ -1,5 +1,6 @@
-import type { AppState, FavoriteFolder, TradeRecord, TradeSource } from './types.js'
+import type { AppState, CardTradeOffer, FavoriteFolder, TradeRecord, TradeSource } from './types.js'
 import { DAILY_TRADE_INITIATION_LIMIT, DEFAULT_FAVORITE_FOLDERS, SOLO_FOLDER_ID } from './types.js'
+import { normalizeCardTradeOffer } from './tradeOffers.js'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
 const MAX_CARD_NUMBER = 135
@@ -130,12 +131,35 @@ export function migrateState(parsed: LegacyState): AppState {
       favoriteFolders.length > 0 ? favoriteFolders.map((a) => a.id) : [SOLO_FOLDER_ID]
   }
 
+  const tradeOffers: Record<string, CardTradeOffer> = {}
+  for (const [id, raw] of Object.entries(parsed.tradeOffers ?? {})) {
+    const cardId = migrateCardId(id)
+    if (!cardId) continue
+    const offer = normalizeCardTradeOffer(raw)
+    if (!offer) continue
+    if (offer.specificCardIds) {
+      const specificCardIds = [
+        ...new Set(
+          offer.specificCardIds
+            .map((sid) => migrateCardId(sid))
+            .filter((sid): sid is string => Boolean(sid)),
+        ),
+      ]
+      offer.specificCardIds = specificCardIds.length ? specificCardIds : undefined
+      if (offer.want === 'specific' && !offer.specificCardIds?.length) {
+        offer.want = 'any'
+      }
+    }
+    tradeOffers[cardId] = offer
+  }
+
   return {
     owned,
     neededBy,
     favoriteFolders,
     trades: migrateTrades(parsed.trades),
     potentialTrades: migrateTradeLike(parsed.potentialTrades),
+    tradeOffers,
     locale: normalizeLocale(parsed.locale),
     tradeAttemptsLeft: normalizeTradeAttemptsLeft(parsed.tradeAttemptsLeft),
   }
@@ -147,6 +171,7 @@ export function isEmptyState(state: AppState): boolean {
     Object.keys(state.neededBy).length === 0 &&
     state.favoriteFolders.length === 0 &&
     state.trades.length === 0 &&
-    state.potentialTrades.length === 0
+    state.potentialTrades.length === 0 &&
+    Object.keys(state.tradeOffers ?? {}).length === 0
   )
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { CardSet } from '../data/cards'
-import type { FavoriteFolder, Card, CardColor, Rarity } from '../types'
+import type { FavoriteFolder, Card, CardColor, CardTradeOffer, Rarity } from '../types'
+import { effectiveDisposition } from '../../shared/tradeOffers'
 import { useI18n } from '../i18n'
 import { AccountNeedToggles } from './AccountNeedToggles'
 import { CardItem } from './CardItem'
@@ -18,6 +19,7 @@ interface Props {
   reservedByCard: Record<string, number>
   reservedPartners: Record<string, string[]>
   tradeNeedCardIds: Set<string>
+  tradeOffers?: Record<string, CardTradeOffer>
   readOnly?: boolean
   onCardClick?: (card: Card) => void
   onAdjust?: (cardId: string, delta: number) => void
@@ -41,6 +43,7 @@ export function CollectionView({
   reservedByCard,
   reservedPartners,
   tradeNeedCardIds,
+  tradeOffers = {},
   readOnly = false,
   onCardClick,
   onAdjust,
@@ -69,8 +72,9 @@ export function CollectionView({
       const qty = owned[c.id] ?? 0
       const reserved = reservedByCard[c.id] ?? 0
       const needed = neededBy[c.id] ?? []
+      const keep = effectiveDisposition(tradeOffers[c.id]) === 'keep'
       if (onlyOwned && qty <= 0) return false
-      if (onlyTradeable && qty - 1 - reserved < 1) return false
+      if (onlyTradeable && (keep || qty - 1 - reserved < 1)) return false
       if (onlyNeeded && needed.length === 0) return false
       if (
         q &&
@@ -96,6 +100,7 @@ export function CollectionView({
     owned,
     reservedByCard,
     neededBy,
+    tradeOffers,
     cards,
   ])
 
@@ -116,7 +121,8 @@ export function CollectionView({
   function renderCard(c: Card) {
     const qty = owned[c.id] ?? 0
     const reserved = reservedByCard[c.id] ?? 0
-    const tradeable = Math.max(0, qty - 1 - reserved)
+    const keep = effectiveDisposition(tradeOffers[c.id]) === 'keep'
+    const tradeable = keep ? 0 : Math.max(0, qty - 1 - reserved)
     const needed = neededBy[c.id] ?? []
     const allOn = favoriteFolders.every((a) => needed.includes(a.id))
     return (
@@ -194,6 +200,7 @@ export function CollectionView({
           neededBy={neededBy}
           reservedByCard={reservedByCard}
           tradeNeedCardIds={tradeNeedCardIds}
+          tradeOffers={tradeOffers}
         />
       )}
 

@@ -50,6 +50,18 @@ export interface PotentialTrade {
   createdAt: string
 }
 
+/** Что делать с лишними копиями карты */
+export type ExtraDisposition = 'keep' | 'trade' | 'surcharge' | 'gift'
+
+/** На что менять при disposition trade/surcharge */
+export type TradeWant = 'any' | 'equal_or_more' | 'specific'
+
+export interface CardTradeOffer {
+  disposition: ExtraDisposition
+  want?: TradeWant
+  specificCardIds?: string[]
+}
+
 export interface AppState {
   owned: Record<string, number>
   /** cardId → id папок избранного, которым нужна карта */
@@ -57,6 +69,8 @@ export interface AppState {
   favoriteFolders: FavoriteFolder[]
   trades: TradeRecord[]
   potentialTrades: PotentialTrade[]
+  /** Политика по лишним копиям (нет записи = меняю / любую) */
+  tradeOffers?: Record<string, CardTradeOffer>
   /** UI language */
   locale?: 'ru' | 'en'
   /** @deprecated миграция со старого формата */

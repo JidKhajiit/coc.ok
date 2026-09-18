@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import * as api from '../api/client'
-import type { PublicCollectionSummary } from '../api/client'
+import type { CardTradeEvent, PublicCollectionSummary } from '../api/client'
 import { PublicAppShell } from '../components/PublicAppShell'
 import { useI18n } from '../i18n'
 import { BRAND_NAME } from '../brand'
@@ -19,8 +19,29 @@ function SharedCollectionsList({ eventSlug }: { eventSlug: string }) {
       : undefined
 
   const [collections, setCollections] = useState<PublicCollectionSummary[]>([])
+  const [event, setEvent] = useState<CardTradeEvent | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const sortedCards = useMemo(
+    () => (event?.cards ? [...event.cards].sort((a, b) => a.number - b.number) : []),
+    [event],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .getCardTradeEvent(eventSlug)
+      .then((data) => {
+        if (!cancelled) setEvent(data)
+      })
+      .catch(() => {
+        if (!cancelled) setEvent(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [eventSlug])
 
   useEffect(() => {
     let cancelled = false
@@ -43,9 +64,33 @@ function SharedCollectionsList({ eventSlug }: { eventSlug: string }) {
     }
   }, [eventSlug, filter?.cardId, filter?.role])
 
+  const setRole = (role: 'needed' | 'owned') => {
+    const next = new URLSearchParams(searchParams)
+    next.set('mode', role)
+    if (!next.get('card') && sortedCards[0]) {
+      next.set('card', sortedCards[0].id)
+    }
+    setSearchParams(next)
+  }
+
+  const setCard = (nextCardId: string) => {
+    if (!nextCardId) {
+      setSearchParams({})
+      return
+    }
+    const next = new URLSearchParams(searchParams)
+    next.set('card', nextCardId)
+    if (next.get('mode') !== 'needed' && next.get('mode') !== 'owned') {
+      next.set('mode', 'needed')
+    }
+    setSearchParams(next)
+  }
+
   const clearFilter = () => {
     setSearchParams({})
   }
+
+  const activeRole = mode === 'owned' ? 'owned' : mode === 'needed' ? 'needed' : null
 
   return (
     <div className="app app--public">
@@ -61,20 +106,62 @@ function SharedCollectionsList({ eventSlug }: { eventSlug: string }) {
               ? t('share.collectionsFilterOwned')
               : t('share.collectionsLead')}
         </p>
-        {filter && (
-          <div className="panel__actions" style={{ marginTop: 12 }}>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={clearFilter}>
-              {t('share.collectionsClearFilter')}
-            </button>
-            <Link to={collectionsListPath(eventSlug)} className="btn btn--ghost btn--sm">
-              {t('share.allCollections')}
-            </Link>
-          </div>
-        )}
       </header>
 
       <main className="main">
         <section className="panel">
+          <div className="share-filters">
+            <div className="share-filters__group">
+              <span className="share-filters__label">{t('share.filterRole')}</span>
+              <div className="chip-row" role="group" aria-label={t('share.filterRole')}>
+                <button
+                  type="button"
+                  className={`chip ${activeRole === 'needed' ? 'is-active' : ''}`}
+                  onClick={() => setRole('needed')}
+                >
+                  {t('share.filterRoleNeeded')}
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${activeRole === 'owned' ? 'is-active' : ''}`}
+                  onClick={() => setRole('owned')}
+                >
+                  {t('share.filterRoleOwned')}
+                </button>
+              </div>
+            </div>
+            <div className="share-filters__group">
+              <label className="share-filters__label" htmlFor="share-filter-card">
+                {t('share.filterCard')}
+              </label>
+              <select
+                id="share-filter-card"
+                className="share-filters__select"
+                value={cardId ?? ''}
+                onChange={(e) => setCard(e.target.value)}
+                disabled={sortedCards.length === 0}
+              >
+                <option value="">{t('share.filterCardPlaceholder')}</option>
+                {sortedCards.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    #{c.number}
+                    {c.unknownName ? '' : ` · ${c.name}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {filter && (
+              <div className="panel__actions">
+                <button type="button" className="btn btn--ghost btn--sm" onClick={clearFilter}>
+                  {t('share.collectionsClearFilter')}
+                </button>
+                <Link to={collectionsListPath(eventSlug)} className="btn btn--ghost btn--sm">
+                  {t('share.allCollections')}
+                </Link>
+              </div>
+            )}
+          </div>
+
           {loading && <p className="panel__status">{t('auth.loading')}</p>}
           {error && <p className="panel__error">{error}</p>}
           {!loading && !error && collections.length === 0 && (
