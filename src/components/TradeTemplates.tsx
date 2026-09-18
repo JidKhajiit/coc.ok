@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { rarityLabel } from '../data/cards'
-import type { Card, Rarity } from '../types'
+import type { Card, CardTradeOffer, Rarity } from '../types'
+import { effectiveDisposition } from '../../shared/tradeOffers'
 import { createTranslator, useI18n, type Locale, type MessageKey } from '../i18n'
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   neededBy: Record<string, string[]>
   reservedByCard: Record<string, number>
   tradeNeedCardIds: Set<string>
+  tradeOffers?: Record<string, CardTradeOffer>
 }
 
 type TemplateId =
@@ -120,6 +122,7 @@ export function TradeTemplates({
   neededBy,
   reservedByCard,
   tradeNeedCardIds,
+  tradeOffers = {},
 }: Props) {
   const { t, locale } = useI18n()
   const [copiedId, setCopiedId] = useState<TemplateId | null>(null)
@@ -148,7 +151,8 @@ export function TradeTemplates({
 
       if (isMissing || isMarked || isTradeNeed) neededCards.push(c)
       if (isMissing) missingCards.push(c)
-      if (qty - 1 - reserved >= 1) forTrade.push(c)
+      const keep = effectiveDisposition(tradeOffers[c.id]) === 'keep'
+      if (!keep && qty - 1 - reserved >= 1) forTrade.push(c)
     }
 
     neededCards.sort((a, b) => a.number - b.number)
@@ -165,7 +169,7 @@ export function TradeTemplates({
       missingCards: noGold(missingCards),
       forTrade: noGold(forTrade),
     }
-  }, [cards, owned, neededBy, reservedByCard, tradeNeedCardIds, excludeGold])
+  }, [cards, owned, neededBy, reservedByCard, tradeNeedCardIds, tradeOffers, excludeGold])
 
   const lists: Lists = useMemo(
     () => ({

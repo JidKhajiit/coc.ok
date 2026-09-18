@@ -35,6 +35,12 @@ const potentialTradeSchema = z.object({
   createdAt: z.string().min(1).max(64),
 })
 
+const cardTradeOfferSchema = z.object({
+  disposition: z.enum(['keep', 'trade', 'surcharge', 'gift']),
+  want: z.enum(['any', 'equal_or_more', 'specific']).optional(),
+  specificCardIds: z.array(z.string().min(1).max(32)).max(200).optional(),
+})
+
 const appStateSchema = z.object({
   owned: z.record(z.string(), z.number().int().min(0).max(9999)),
   neededBy: z.record(z.string(), z.array(z.string().min(1).max(64))),
@@ -42,6 +48,7 @@ const appStateSchema = z.object({
   accounts: z.array(favoriteFolderSchema).max(50).optional(),
   trades: z.array(tradeSchema).max(10_000),
   potentialTrades: z.array(potentialTradeSchema).max(1000),
+  tradeOffers: z.record(z.string(), cardTradeOfferSchema).optional(),
   locale: z.enum(['ru', 'en']).optional(),
 })
 

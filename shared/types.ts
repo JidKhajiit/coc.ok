@@ -27,12 +27,26 @@ export interface PotentialTrade {
   createdAt: string
 }
 
+/** What to do with spare copies of a card. */
+export type ExtraDisposition = 'keep' | 'trade' | 'surcharge' | 'gift'
+
+/** What the owner wants in return when disposition is trade/surcharge. */
+export type TradeWant = 'any' | 'equal_or_more' | 'specific'
+
+export interface CardTradeOffer {
+  disposition: ExtraDisposition
+  want?: TradeWant
+  specificCardIds?: string[]
+}
+
 export interface AppState {
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   favoriteFolders: FavoriteFolder[]
   trades: TradeRecord[]
   potentialTrades: PotentialTrade[]
+  /** Per-card policy for spare copies (missing = trade / any). */
+  tradeOffers?: Record<string, CardTradeOffer>
   locale?: 'ru' | 'en'
   wishlist?: string[]
   /** Remaining in-game trade initiations (manual tracker, daily cap 3). */
@@ -59,6 +73,7 @@ export const EMPTY_STATE: AppState = {
   favoriteFolders: DEFAULT_FAVORITE_FOLDERS,
   trades: [],
   potentialTrades: [],
+  tradeOffers: {},
   locale: 'ru',
   tradeAttemptsLeft: DAILY_TRADE_INITIATION_LIMIT,
 }

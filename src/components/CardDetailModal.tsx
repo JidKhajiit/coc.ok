@@ -4,12 +4,21 @@ import { useNavigate } from 'react-router-dom'
 import * as api from '../api/client'
 import type { CardStats } from '../api/client'
 import { rarityLabel } from '../data/cards'
-import { useI18n } from '../i18n'
+import { useI18n, type MessageKey } from '../i18n'
 import { collectionsListPath } from '../lib/events'
-import type { Card } from '../types'
+import type { Card, CardTradeOffer, ExtraDisposition, TradeWant } from '../types'
+import {
+  effectiveDisposition,
+  effectiveWant,
+  formatSpecificCardNumbers,
+  parseSpecificCardNumbers,
+} from '../../shared/tradeOffers'
 import { CardPicker } from './CardPicker'
 
 export type CardDetailMode = 'own-collection' | 'own-wishlist' | 'public'
+
+const DISPOSITIONS: ExtraDisposition[] = ['keep', 'trade', 'surcharge', 'gift']
+const WANTS: TradeWant[] = ['any', 'equal_or_more', 'specific']
 
 type Props = {
   open: boolean
@@ -19,6 +28,10 @@ type Props = {
   mode: CardDetailMode
   qty: number
   neededAccountIds?: string[]
+  /** Catalog for parsing specific card numbers. */
+  catalogCards?: Card[]
+  tradeOffer?: CardTradeOffer | null
+  onChangeTradeOffer?: (offer: CardTradeOffer | null) => void
   /** Public share slug of the collection owner (for proposals). */
   counterpartyShareSlug?: string
   acceptTradeOffers?: boolean
@@ -36,6 +49,9 @@ export function CardDetailModal({
   mode,
   qty,
   neededAccountIds = [],
+  catalogCards = [],
+  tradeOffer = null,
+  onChangeTradeOffer,
   counterpartyShareSlug,
   acceptTradeOffers = true,
   signedIn = false,
@@ -50,6 +66,8 @@ export function CardDetailModal({
   const [offerCardId, setOfferCardId] = useState('')
   const [feedback, setFeedback] = useState('')
   const [busy, setBusy] = useState(false)
+  const [specificText, setSpecificText] = useState('')
+  const [specificInvalid, setSpecificInvalid] = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -70,6 +88,8 @@ export function CardDetailModal({
     setProposing(false)
     setOfferCardId('')
     setStats(null)
+    setSpecificText(formatSpecificCardNumbers(tradeOffer?.specificCardIds ?? [], catalogCards))
+    setSpecificInvalid([])
     let cancelled = false
     setStatsLoading(true)
     void api
@@ -86,6 +106,8 @@ export function CardDetailModal({
     return () => {
       cancelled = true
     }
+    // catalogCards / tradeOffer intentionally omitted — reset only on open/card change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, eventSlug, card.id])
 
   const pickerCards = useMemo(() => {
@@ -96,6 +118,58 @@ export function CardDetailModal({
 
   const isOwn = mode === 'own-collection' || mode === 'own-wishlist'
   const isNeeded = neededAccountIds.length > 0
+  const showExtrasEditor = mode === 'own-collection' && qty > 1 && onChangeTradeOffer
+  const disposition = effectiveDisposition(tradeOffer)
+  const want = effectiveWant(tradeOffer)
+  const showWant = disposition === 'trade' || disposition === 'surcharge'
+  const publicDisposition =
+    mode === 'public' && qty > 1 && tradeOffer?.disposition
+      ? tradeOffer.disposition
+      : null
+
+  const commitOffer = (next: CardTradeOffer) => {
+    onChangeTradeOffer?.(next)
+  }
+
+  const setDisposition = (next: ExtraDisposition) => {
+    if (next === 'keep' || next === 'gift') {
+      commitOffer({ disposition: next })
+      setSpecificText('')
+      setSpecificInvalid([])
+      return
+    }
+    commitOffer({
+      disposition: next,
+      want: tradeOffer?.want ?? 'any',
+      specificCardIds:
+        (tradeOffer?.want ?? 'any') === 'specific' ? tradeOffer?.specificCardIds : undefined,
+    })
+  }
+
+  const setWant = (next: TradeWant) => {
+    if (next === 'specific') {
+      commitOffer({
+        disposition,
+        want: 'specific',
+        specificCardIds: tradeOffer?.specificCardIds,
+      })
+      return
+    }
+    commitOffer({ disposition, want: next })
+    setSpecificText('')
+    setSpecificInvalid([])
+  }
+
+  const commitSpecific = (raw: string) => {
+    const { ids, invalidTokens } = parseSpecificCardNumbers(raw, catalogCards)
+    setSpecificInvalid(invalidTokens)
+    commitOffer({
+      disposition,
+      want: 'specific',
+      specificCardIds: ids.length ? ids : undefined,
+    })
+    setSpecificText(formatSpecificCardNumbers(ids, catalogCards) || raw.trim())
+  }
 
   const goTradeFilter = () => {
     const role = mode === 'own-wishlist' ? 'owned' : 'needed'
@@ -191,7 +265,72 @@ export function CardDetailModal({
                 {isNeeded ? t('cardDetail.needed') : t('cardDetail.notNeeded')}
               </p>
             )}
+            {publicDisposition && (
+              <p className="card-detail__offer-badge">
+                {t(`cardDetail.disposition.${publicDisposition}` as MessageKey)}
+              </p>
+            )}
           </div>
+
+          {showExtrasEditor && (
+            <div className="card-detail__extras">
+              <p className="card-detail__extras-label">{t('cardDetail.extrasLabel')}</p>
+              <div className="chip-row" role="group" aria-label={t('cardDetail.extrasLabel')}>
+                {DISPOSITIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`chip ${disposition === d ? 'is-active' : ''}`}
+                    onClick={() => setDisposition(d)}
+                  >
+                    {t(`cardDetail.disposition.${d}` as MessageKey)}
+                  </button>
+                ))}
+              </div>
+
+              {showWant && (
+                <>
+                  <p className="card-detail__extras-label">{t('cardDetail.wantLabel')}</p>
+                  <div className="chip-row" role="group" aria-label={t('cardDetail.wantLabel')}>
+                    {WANTS.map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        className={`chip ${want === w ? 'is-active' : ''}`}
+                        onClick={() => setWant(w)}
+                      >
+                        {t(`cardDetail.want.${w}` as MessageKey)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {showWant && want === 'specific' && (
+                <div className="card-detail__specific">
+                  <input
+                    type="text"
+                    className="card-detail__specific-input"
+                    value={specificText}
+                    placeholder={t('cardDetail.specificPlaceholder')}
+                    onChange={(e) => setSpecificText(e.target.value)}
+                    onBlur={() => commitSpecific(specificText)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        commitSpecific(specificText)
+                      }
+                    }}
+                  />
+                  {specificInvalid.length > 0 && (
+                    <p className="panel__error">
+                      {t('cardDetail.specificInvalid', { tokens: specificInvalid.join(', ') })}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="card-detail__trends">
             {statsLoading && <p className="panel__status">{t('auth.loading')}</p>}
@@ -199,23 +338,25 @@ export function CardDetailModal({
               <p className="card-detail__trends-empty">{t('cardDetail.trendsNone')}</p>
             )}
             {!statsLoading && stats && (
-              <>
-                <p className="card-detail__tier">{t('cardDetail.tier', { tier: stats.tier })}</p>
-                <ul className="card-detail__trend-list">
-                  <li>{t('cardDetail.trendsGiven', { n: stats.givenCount })}</li>
-                  <li>{t('cardDetail.trendsRequested', { n: stats.requestedCount })}</li>
-                  {stats.rank != null ? (
-                    <li>
-                      {t('cardDetail.trendsRank', {
+              <span
+                className="card-detail__tier"
+                tabIndex={0}
+                aria-describedby={`card-tier-tip-${card.id}`}
+              >
+                {t('cardDetail.tier', { tier: stats.tier })}
+                <span id={`card-tier-tip-${card.id}`} className="card-detail__tier-tip" role="tooltip">
+                  {t('cardDetail.trendsGiven', { n: stats.givenCount })}
+                  {' · '}
+                  {t('cardDetail.trendsRequested', { n: stats.requestedCount })}
+                  {' · '}
+                  {stats.rank != null
+                    ? t('cardDetail.trendsRank', {
                         rank: stats.rank,
                         total: stats.totalCards,
-                      })}
-                    </li>
-                  ) : (
-                    <li>{t('cardDetail.trendsNone')}</li>
-                  )}
-                </ul>
-              </>
+                      })
+                    : t('cardDetail.trendsNone')}
+                </span>
+              </span>
             )}
           </div>
 

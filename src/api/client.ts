@@ -1,4 +1,4 @@
-import type { AppState, Card, FavoriteFolder, TrendItem } from '../types'
+import type { AppState, Card, CardTradeOffer, FavoriteFolder, TrendItem } from '../types'
 import type { CardSet } from '../data/cards'
 
 export type PopularityTier = 'S' | 'A' | 'B' | 'C' | 'D'
@@ -10,6 +10,7 @@ export type PublicCollection = {
   owned: Record<string, number>
   neededBy: Record<string, string[]>
   favoriteFolders: FavoriteFolder[]
+  tradeOffers?: Record<string, CardTradeOffer>
   updatedAt: string
   stats: {
     uniqueOwned: number

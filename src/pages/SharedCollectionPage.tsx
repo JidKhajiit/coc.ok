@@ -77,7 +77,12 @@ export function SharedCollectionLayout() {
   }
 
   const { collection, event } = payload
-  const stats = computeCollectionStats(collection.owned, collection.neededBy)
+  const stats = computeCollectionStats(
+    collection.owned,
+    collection.neededBy,
+    {},
+    collection.tradeOffers ?? {},
+  )
   const collectionPercent =
     event.cardCount > 0 ? Math.round((stats.uniqueOwned / event.cardCount) * 100) : 0
 
@@ -211,6 +216,7 @@ export function SharedCollectionCollectionTab() {
         reservedByCard={{}}
         reservedPartners={{}}
         tradeNeedCardIds={emptyTradeNeed}
+        tradeOffers={collection.tradeOffers}
         onCardClick={setDetailCard}
       />
       {detailCard && (
@@ -222,6 +228,7 @@ export function SharedCollectionCollectionTab() {
           mode="public"
           qty={collection.owned[detailCard.id] ?? 0}
           neededAccountIds={collection.neededBy[detailCard.id] ?? []}
+          tradeOffer={collection.tradeOffers?.[detailCard.id] ?? null}
           counterpartyShareSlug={slug || collection.slug}
           acceptTradeOffers={collection.acceptTradeOffers}
           signedIn={Boolean(auth.user)}
@@ -281,6 +288,7 @@ export function SharedCollectionNeededTab() {
           mode="public"
           qty={collection.owned[detailCard.id] ?? 0}
           neededAccountIds={collection.neededBy[detailCard.id] ?? []}
+          tradeOffer={collection.tradeOffers?.[detailCard.id] ?? null}
           counterpartyShareSlug={slug || collection.slug}
           acceptTradeOffers={collection.acceptTradeOffers}
           signedIn={Boolean(auth.user)}

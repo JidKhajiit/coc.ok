@@ -4,6 +4,7 @@ import { EMPTY_STATE } from '../../shared/types'
 import type { Card } from '../types'
 import type {
   AppState,
+  CardTradeOffer,
   FavoriteFolder,
   PotentialTrade,
   TradeRecord,
@@ -13,6 +14,7 @@ import type {
 import { DAILY_TRADE_INITIATION_LIMIT, SOLO_FOLDER_ID } from '../types'
 import { normalizeLocale, type Locale } from '../i18n'
 import { isSameGameDay } from '../utils/gameDay'
+import { effectiveDisposition } from '../../shared/tradeOffers'
 import * as api from '../api/client'
 import { readLocalEventState, writeLocalEventState } from '../lib/localStateStore'
 
@@ -423,6 +425,15 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
     })
   }, [])
 
+  const setTradeOffer = useCallback((cardId: string, offer: CardTradeOffer | null) => {
+    setState((prev) => {
+      const tradeOffers = { ...(prev.tradeOffers ?? {}) }
+      if (!offer) delete tradeOffers[cardId]
+      else tradeOffers[cardId] = offer
+      return { ...prev, tradeOffers }
+    })
+  }, [])
+
   const setLocale = useCallback((locale: Locale) => {
     setState((prev) => ({ ...prev, locale: normalizeLocale(locale) }))
   }, [])
@@ -737,14 +748,15 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
       .filter(([, qty]) => qty > 1)
       .map(([cardId, qty]) => {
         const reserved = reservedByCard[cardId] ?? 0
+        const keep = effectiveDisposition(state.tradeOffers?.[cardId]) === 'keep'
         return {
           cardId,
           qty,
           reserved,
-          tradeable: Math.max(0, qty - 1 - reserved),
+          tradeable: keep ? 0 : Math.max(0, qty - 1 - reserved),
         }
       })
-  }, [state.owned, reservedByCard])
+  }, [state.owned, state.tradeOffers, reservedByCard])
 
   /** Отдаваемые в потенциале без копии для обмена (qty ≤ 1) */
   const tradeNeedCardIds = useMemo(() => {
@@ -892,6 +904,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
     reloadFromServer,
     setOwned,
     adjustOwned,
+    setTradeOffer,
     setLocale,
     adjustTradeAttemptsLeft,
     setTradeAttemptsLeft,
