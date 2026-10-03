@@ -1,15 +1,16 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db/index.js'
 import { cozyFarmListings, cozyFarmVotes, profiles, users } from '../db/schema.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAuth, requirePermission } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
 import {
   getMembership,
   requireProfileAccess,
   resolveActiveProfile,
 } from '../lib/profiles.js'
+import { fromTatarySnapshot } from '../../../shared/cozyFarmSupportImport.js'
 
 const uuidSchema = z.string().uuid()
 
@@ -22,7 +23,7 @@ const bonusField = z
 
 const listingBodySchema = z
   .object({
-    gameUid: z.string().trim().min(1).max(64).optional(),
+    gameUid: z.string().trim().min(1).max(64),
     bonusDragonfruit: bonusField,
     bonusCarrot: bonusField,
     bonusBamboo: bonusField,
@@ -52,8 +53,31 @@ const voteBodySchema = z.object({
   value: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
 })
 
+const supportListingSchema = z.object({
+  gameUid: z.string().trim().min(1).max(64),
+  bonusDragonfruit: bonusField,
+  bonusCarrot: bonusField,
+  bonusBamboo: bonusField,
+  bonusPhantom: bonusField,
+  bonusCranberry: bonusField,
+  bonusOrange: bonusField,
+})
+
+const supportImportSchema = z.object({
+  version: z.number().optional(),
+  exportedAt: z.string().optional(),
+  listings: z
+    .array(z.union([z.string().trim().min(1).max(64), supportListingSchema]))
+    .min(1)
+    .max(5000),
+})
+
 function nullIfUndefined(v: number | null | undefined): number | null {
   return v === undefined ? null : v
+}
+
+function canModerateBoard(permissions: string[]) {
+  return permissions.includes('admin:access') || permissions.includes('roles:manage')
 }
 
 function maxBonus(row: {
@@ -89,6 +113,7 @@ export function createCozyFarmRoutes(db: Db) {
 
   app.get('/listings', async (c) => {
     const me = c.get('user')!
+    const revealCreator = canModerateBoard(me.permissions)
 
     const rows = await db
       .select({
@@ -108,9 +133,8 @@ export function createCozyFarmRoutes(db: Db) {
         dislikes: sql<number>`coalesce(sum(case when ${cozyFarmVotes.value} = -1 then ${cozyFarmVotes.weight} else 0 end), 0)::int`,
       })
       .from(cozyFarmListings)
-      .innerJoin(profiles, eq(cozyFarmListings.profileId, profiles.id))
+      .leftJoin(profiles, eq(cozyFarmListings.profileId, profiles.id))
       .leftJoin(cozyFarmVotes, eq(cozyFarmVotes.listingId, cozyFarmListings.id))
-      .where(isNull(profiles.deletedAt))
       .groupBy(
         cozyFarmListings.id,
         cozyFarmListings.profileId,
@@ -140,7 +164,7 @@ export function createCozyFarmRoutes(db: Db) {
       .map((row) => ({
         id: row.id,
         profileId: row.profileId,
-        nickname: row.nickname,
+        nickname: revealCreator ? (row.nickname ?? null) : null,
         gameUid: row.gameUid,
         bonusDragonfruit: row.bonusDragonfruit,
         bonusCarrot: row.bonusCarrot,
@@ -183,7 +207,7 @@ export function createCozyFarmRoutes(db: Db) {
       .insert(cozyFarmListings)
       .values({
         profileId: profile.id,
-        gameUid: profile.gameUid,
+        gameUid: data.gameUid,
         bonusDragonfruit: nullIfUndefined(data.bonusDragonfruit),
         bonusCarrot: nullIfUndefined(data.bonusCarrot),
         bonusBamboo: nullIfUndefined(data.bonusBamboo),
@@ -228,15 +252,14 @@ export function createCozyFarmRoutes(db: Db) {
       .limit(1)
 
     if (!existing) return c.json({ error: 'Listing not found' }, 404)
-    const isAdmin = me.permissions.includes('admin:access')
     const access = await requireProfileAccess(db, existing.profileId, me.id, 'admin')
-    if (!access && !isAdmin) return c.json({ error: 'Forbidden' }, 403)
+    if (!access && !canModerateBoard(me.permissions)) return c.json({ error: 'Forbidden' }, 403)
 
     const data = parsed.data
     const [updated] = await db
       .update(cozyFarmListings)
       .set({
-        gameUid: data.gameUid ?? existing.gameUid,
+        gameUid: data.gameUid,
         bonusDragonfruit: nullIfUndefined(data.bonusDragonfruit),
         bonusCarrot: nullIfUndefined(data.bonusCarrot),
         bonusBamboo: nullIfUndefined(data.bonusBamboo),
@@ -257,7 +280,9 @@ export function createCozyFarmRoutes(db: Db) {
     return c.json({
       listing: {
         ...updated,
-        nickname: profile?.nickname ?? access?.nickname ?? null,
+        nickname: canModerateBoard(me.permissions)
+          ? (profile?.nickname ?? access?.nickname ?? null)
+          : null,
       },
     })
   })
@@ -276,9 +301,8 @@ export function createCozyFarmRoutes(db: Db) {
       .limit(1)
 
     if (!existing) return c.json({ error: 'Listing not found' }, 404)
-    const isAdmin = me.permissions.includes('admin:access')
     const access = await requireProfileAccess(db, existing.profileId, me.id, 'admin')
-    if (!access && !isAdmin) return c.json({ error: 'Forbidden' }, 403)
+    if (!access && !canModerateBoard(me.permissions)) return c.json({ error: 'Forbidden' }, 403)
 
     await db.delete(cozyFarmListings).where(eq(cozyFarmListings.id, listingId))
     return c.json({ ok: true })
@@ -384,6 +408,92 @@ export function createCozyFarmRoutes(db: Db) {
     }
 
     return c.json({ ok: true, myVote: nextValue })
+  })
+
+  app.get('/admin/export', requirePermission('admin:access'), async (c) => {
+    const rows = await db
+      .select({
+        gameUid: cozyFarmListings.gameUid,
+        bonusDragonfruit: cozyFarmListings.bonusDragonfruit,
+        bonusCarrot: cozyFarmListings.bonusCarrot,
+        bonusBamboo: cozyFarmListings.bonusBamboo,
+        bonusPhantom: cozyFarmListings.bonusPhantom,
+        bonusCranberry: cozyFarmListings.bonusCranberry,
+        bonusOrange: cozyFarmListings.bonusOrange,
+      })
+      .from(cozyFarmListings)
+      .orderBy(cozyFarmListings.createdAt)
+
+    return c.json({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      listings: rows,
+    })
+  })
+
+  app.post('/admin/import', requirePermission('admin:access'), async (c) => {
+    const me = c.get('user')!
+    const profile = await resolveUserActiveProfile(db, me.id)
+    if (!profile) {
+      return c.json({ error: 'Create a game profile before importing listings' }, 400)
+    }
+
+    const body = await c.req.json().catch(() => null)
+    const parsed = supportImportSchema.safeParse(fromTatarySnapshot(body) ?? body)
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
+    }
+
+    const incoming = parsed.data.listings.map((item) =>
+      typeof item === 'string' ? { gameUid: item.trim() } : item,
+    )
+
+    const existingRows = await db
+      .select({ gameUid: cozyFarmListings.gameUid })
+      .from(cozyFarmListings)
+    const existing = new Set(existingRows.map((row) => row.gameUid))
+    const seen = new Set<string>()
+    const toInsert: Array<{
+      profileId: string
+      gameUid: string
+      bonusDragonfruit: number | null
+      bonusCarrot: number | null
+      bonusBamboo: number | null
+      bonusPhantom: number | null
+      bonusCranberry: number | null
+      bonusOrange: number | null
+    }> = []
+
+    for (const item of incoming) {
+      const gameUid = item.gameUid.trim()
+      if (!gameUid || seen.has(gameUid) || existing.has(gameUid)) continue
+      seen.add(gameUid)
+      toInsert.push({
+        profileId: profile.id,
+        gameUid,
+        bonusDragonfruit: nullIfUndefined(item.bonusDragonfruit),
+        bonusCarrot: nullIfUndefined(item.bonusCarrot),
+        bonusBamboo: nullIfUndefined(item.bonusBamboo),
+        bonusPhantom: nullIfUndefined(item.bonusPhantom),
+        bonusCranberry: nullIfUndefined(item.bonusCranberry),
+        bonusOrange: nullIfUndefined(item.bonusOrange),
+      })
+    }
+
+    if (toInsert.length > 0) {
+      await db.insert(cozyFarmListings).values(toInsert)
+    }
+
+    return c.json({
+      ok: true,
+      added: toInsert.length,
+      skipped: incoming.length - toInsert.length,
+    })
+  })
+
+  app.delete('/admin/listings', requirePermission('admin:access'), async (c) => {
+    const deleted = await db.delete(cozyFarmListings).returning({ id: cozyFarmListings.id })
+    return c.json({ ok: true, deleted: deleted.length })
   })
 
   return app

@@ -3917,6 +3917,20 @@ h4 {
   border: 1px solid var(--line);
 }
 
+.admin-import-tabs {
+  margin: 0 0 14px;
+}
+
+.admin-import-tabs .tabs__btn.is-active {
+  background: var(--accent);
+  color: #f7fff9;
+}
+
+.admin-import-tabs .tabs__btn.is-active:hover {
+  background: var(--accent-strong);
+  color: #f7fff9;
+}
+
 .admin-backup-section h3 {
   margin: 0 0 14px;
   font-size: 1rem;

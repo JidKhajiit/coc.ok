@@ -45,9 +45,33 @@ const projectRoot = process.cwd()
 app.use('/uploads/*', serveStatic({ root: projectRoot }))
 
 const distPath = resolve(projectRoot, 'dist')
-if (existsSync(distPath)) {
+if (env.NODE_ENV === 'production' && existsSync(distPath)) {
   app.use('/*', serveStatic({ root: distPath }))
   app.get('*', serveStatic({ path: resolve(distPath, 'index.html') }))
+} else if (env.NODE_ENV !== 'production') {
+  app.get('*', (c) => {
+    if (c.req.path.startsWith('/api') || c.req.path.startsWith('/uploads')) {
+      return c.notFound()
+    }
+    const frontend = env.APP_URL.replace(/\/$/, '')
+    return c.html(
+      `<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>API</title>
+    <style>
+      body { margin: 0; font: 16px/1.45 system-ui, sans-serif; padding: 2rem; color: #1a2a22; background: #f7f2e6; }
+      a { color: #1f5c3e; }
+    </style>
+  </head>
+  <body>
+    <p>Это API в режиме разработки. Интерфейс: <a href="${frontend}">${frontend}</a></p>
+  </body>
+</html>`,
+    )
+  })
 }
 
 serve(
@@ -57,6 +81,9 @@ serve(
   },
   (info) => {
     console.log(`Server running on http://localhost:${info.port}`)
+    if (env.NODE_ENV !== 'production') {
+      console.log(`Frontend (Vite): ${env.APP_URL}`)
+    }
   },
 )
 

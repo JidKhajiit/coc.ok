@@ -496,7 +496,7 @@ const ru: Dict = {
   'cozyFarm.fruit.orange': 'Апельсин',
   'cozyFarm.boardTitle': 'Поддержка',
   'cozyFarm.boardHint':
-    'Можно опубликовать несколько игровых UID с бонусами татари по фруктам (%). Нужен хотя бы один бонус.',
+    'Можно опубликовать несколько игровых UID с бонусами татари по фруктам (%), в том числе чужие. Нужен хотя бы один бонус.',
   'cozyFarm.boardFruitHint':
     'Клик по названию фрукта — сортировка. Двойной клик по значению — вставить в калькулятор.',
   'cozyFarm.publishSummary': 'Добавить UID',
@@ -509,7 +509,7 @@ const ru: Dict = {
   'cozyFarm.copyUid': 'Нажмите, чтобы скопировать UID',
   'cozyFarm.gameUid': 'Игровой UID',
   'cozyFarm.profile': 'Профиль',
-  'cozyFarm.activeProfile': 'Активный профиль: {nickname} ({uid})',
+  'cozyFarm.activeProfile': 'Публикуется от профиля {nickname}. UID можно указать любой, в том числе чужой.',
   'cozyFarm.bonuses': 'Бонусы (%)',
   'cozyFarm.publish': 'Опубликовать',
   'cozyFarm.update': 'Сохранить',
@@ -523,6 +523,7 @@ const ru: Dict = {
   'cozyFarm.saveError': 'Не удалось сохранить',
   'cozyFarm.voteError': 'Не удалось проголосовать',
   'cozyFarm.bonusRequired': 'Укажите хотя бы один бонус',
+  'cozyFarm.uidRequired': 'Укажите игровой UID',
   'calendar.nav': 'Календарь эвентов',
   'calendar.title': 'Календарь эвентов',
   'calendar.lead': 'Расписание игровых событий на ближайший месяц.',
@@ -1025,7 +1026,7 @@ const en: Dict = {
   'cozyFarm.fruit.orange': 'Orange',
   'cozyFarm.boardTitle': 'Support',
   'cozyFarm.boardHint':
-    'You can publish multiple game UIDs with Tatari bonuses per fruit (%). At least one bonus is required.',
+    'You can publish multiple game UIDs with Tatari bonuses per fruit (%), including UIDs of other players. At least one bonus is required.',
   'cozyFarm.boardFruitHint':
     'Click a fruit name to sort. Double-click a value to insert it into the calculator.',
   'cozyFarm.publishSummary': 'Add UID',
@@ -1038,7 +1039,7 @@ const en: Dict = {
   'cozyFarm.copyUid': 'Click to copy UID',
   'cozyFarm.gameUid': 'Game UID',
   'cozyFarm.profile': 'Profile',
-  'cozyFarm.activeProfile': 'Active profile: {nickname} ({uid})',
+  'cozyFarm.activeProfile': 'Posted as profile {nickname}. You can enter any game UID.',
   'cozyFarm.bonuses': 'Bonuses (%)',
   'cozyFarm.publish': 'Publish',
   'cozyFarm.update': 'Save',
@@ -1052,6 +1053,7 @@ const en: Dict = {
   'cozyFarm.saveError': 'Failed to save',
   'cozyFarm.voteError': 'Failed to vote',
   'cozyFarm.bonusRequired': 'Provide at least one bonus',
+  'cozyFarm.uidRequired': 'Enter a game UID',
   'calendar.nav': 'Events calendar',
   'calendar.title': 'Events calendar',
   'calendar.lead': 'Game event schedule for the coming month.',

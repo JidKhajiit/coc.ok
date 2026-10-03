@@ -15,7 +15,7 @@ import {
   CardTradesTrendsTab,
   CardTradesWishlistTab,
 } from './pages/CardTradesPage'
-import { AdminPage, AdminUsersTab, AdminRolesTab, AdminBackupTab, AdminEventsTab, AdminClaimsTab } from './pages/AdminPage'
+import { AdminPage, AdminUsersTab, AdminRolesTab, AdminBackupTab, AdminEventsTab, AdminClaimsTab, AdminCozyFarmTab } from './pages/AdminPage'
 import { AdminCalendarTab } from './pages/AdminCalendarTab'
 import {
   SharedCollectionCollectionTab,
@@ -81,6 +81,7 @@ export default function App() {
           <Route index element={<AdminUsersTab />} />
           <Route path="roles" element={<AdminRolesTab />} />
           <Route path="backup" element={<AdminBackupTab />} />
+          <Route path="cozy-farm" element={<AdminCozyFarmTab />} />
           <Route path="events" element={<AdminEventsTab />} />
           <Route path="calendar" element={<AdminCalendarTab />} />
           <Route path="claims" element={<AdminClaimsTab />} />

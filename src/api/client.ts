@@ -635,7 +635,7 @@ export async function importDatabaseBackup(
 export type CozyFarmListing = {
   id: string
   profileId: string
-  nickname: string
+  nickname: string | null
   gameUid: string
   bonusDragonfruit: number | null
   bonusCarrot: number | null
@@ -651,7 +651,7 @@ export type CozyFarmListing = {
 }
 
 export type CozyFarmListingInput = {
-  gameUid?: string
+  gameUid: string
   bonusDragonfruit?: number | null
   bonusCarrot?: number | null
   bonusBamboo?: number | null
@@ -696,6 +696,33 @@ export async function voteCozyFarmListing(
     method: 'POST',
     body: JSON.stringify({ value }),
   })
+}
+
+export type CozyFarmSupportBackup = {
+  version?: number
+  exportedAt?: string
+  listings: Array<string | CozyFarmListingInput>
+}
+
+export async function exportCozyFarmSupport(): Promise<{
+  version: number
+  exportedAt: string
+  listings: CozyFarmListingInput[]
+}> {
+  return request('/api/cozy-farm/admin/export')
+}
+
+export async function importCozyFarmSupport(
+  backup: CozyFarmSupportBackup,
+): Promise<{ added: number; skipped: number }> {
+  return request('/api/cozy-farm/admin/import', {
+    method: 'POST',
+    body: JSON.stringify(backup),
+  })
+}
+
+export async function clearCozyFarmSupport(): Promise<{ deleted: number }> {
+  return request('/api/cozy-farm/admin/listings', { method: 'DELETE' })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

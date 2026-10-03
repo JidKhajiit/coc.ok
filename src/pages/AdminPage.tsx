@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
 import { Link, NavLink, Outlet, useOutletContext } from 'react-router-dom'
 import type { PermissionOutletContext } from '../components/RequirePermission'
 import type {
@@ -10,6 +10,7 @@ import type {
   DatabaseBackup,
 } from '../api/client'
 import * as api from '../api/client'
+import { fromTatarySnapshot } from '../../shared/cozyFarmSupportImport'
 import { BRAND_NAME } from '../brand'
 import { SiteFooter } from '../components/SiteFooter'
 import '../App.css'
@@ -95,6 +96,12 @@ function AdminShell() {
             Бэкап БД
           </NavLink>
         )}
+        <NavLink
+          to="/admin-panel/cozy-farm"
+          className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+        >
+          Поддержка фермы
+        </NavLink>
         {canManageEvents && (
           <NavLink
             to="/admin-panel/events"
@@ -1010,6 +1017,254 @@ export function AdminBackupTab() {
             disabled={importing || !importText.trim()}
           >
             {importing ? 'Импорт…' : 'Импортировать'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function parseSosocSupportText(text: string): api.CozyFarmSupportBackup {
+  const trimmed = text.trim()
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) return { listings: parsed as api.CozyFarmSupportBackup['listings'] }
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as { listings?: unknown }).listings)
+    ) {
+      return parsed as api.CozyFarmSupportBackup
+    }
+  } catch {
+    const lines = trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+    if (lines.length > 0) return { listings: lines }
+  }
+  throw new Error('Некорректный формат sosoc.su. Нужен JSON экспорта tatary.xyz или список UID.')
+}
+
+function parseTatarySupportText(text: string): api.CozyFarmSupportBackup {
+  try {
+    const converted = fromTatarySnapshot(JSON.parse(text.trim()))
+    if (converted && converted.listings.length > 0) return converted
+  } catch {
+    /* format error below */
+  }
+  throw new Error('Некорректный снимок tatary.xyz. Нужен JSON с массивом targets и pets.')
+}
+
+type CozyFarmImportSource = 'sosoc' | 'tatary'
+
+const IMPORT_SOURCE_META: Record<
+  CozyFarmImportSource,
+  { label: string; desc: string; placeholder: string }
+> = {
+  sosoc: {
+    label: 'sosoc.su',
+    desc: 'JSON экспорта tatary.xyz, массив объектов с `gameUid` и бонусами, или список UID — по одному в строке.',
+    placeholder: '{\n  "listings": [{ "gameUid": "12345678", "bonusDragonfruit": 139 }]\n}',
+  },
+  tatary: {
+    label: 'tatary.xyz',
+    desc: 'Снимок tatary.xyz (`targets` + `pets`). Их 100% пересчитываются в наши 263%.',
+    placeholder: '{\n  "targets": [\n    { "gid": "12345678", "pets": [{ "pid": 13, "rate": 53 }] }\n  ]\n}',
+  },
+}
+
+export function AdminCozyFarmTab() {
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [importSource, setImportSource] = useState<CozyFarmImportSource>('sosoc')
+  const [importTexts, setImportTexts] = useState<Record<CozyFarmImportSource, string>>({
+    sosoc: '',
+    tatary: '',
+  })
+  const [count, setCount] = useState<number | null>(null)
+  const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const importText = importTexts[importSource]
+  const importMeta = IMPORT_SOURCE_META[importSource]
+  const parseImportText =
+    importSource === 'sosoc' ? parseSosocSupportText : parseTatarySupportText
+
+  const refreshCount = useCallback(async () => {
+    const backup = await api.exportCozyFarmSupport()
+    setCount(backup.listings.length)
+    return backup
+  }, [])
+
+  useEffect(() => {
+    void refreshCount().catch(() => setCount(null))
+  }, [refreshCount])
+
+  const handleExport = async () => {
+    setExporting(true)
+    setResult(null)
+    try {
+      const backup = await refreshCount()
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const stamp = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `cozy-farm-support-${stamp}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setResult({ type: 'success', message: `Экспортировано записей: ${backup.listings.length}` })
+    } catch (err) {
+      setResult({ type: 'error', message: err instanceof Error ? err.message : 'Ошибка экспорта' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const applyImport = async (backup: api.CozyFarmSupportBackup) => {
+    const res = await api.importCozyFarmSupport(backup)
+    await refreshCount()
+    setResult({
+      type: 'success',
+      message: `Добавлено: ${res.added}, пропущено (уже были): ${res.skipped}`,
+    })
+  }
+
+  const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    setResult(null)
+    try {
+      await applyImport(parseImportText(await file.text()))
+    } catch (err) {
+      setResult({ type: 'error', message: err instanceof Error ? err.message : 'Ошибка импорта' })
+    } finally {
+      setImporting(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleImportText = async () => {
+    if (!importText.trim()) return
+    setImporting(true)
+    setResult(null)
+    try {
+      await applyImport(parseImportText(importText))
+      setImportTexts((prev) => ({ ...prev, [importSource]: '' }))
+    } catch (err) {
+      setResult({ type: 'error', message: err instanceof Error ? err.message : 'Ошибка импорта' })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleClear = async () => {
+    const total = count ?? 'все'
+    if (
+      !window.confirm(
+        `Очистить список поддержки? Будут удалены ${total} записей. Это действие нельзя отменить.`,
+      )
+    ) {
+      return
+    }
+    setClearing(true)
+    setResult(null)
+    try {
+      const res = await api.clearCozyFarmSupport()
+      setCount(0)
+      setResult({ type: 'success', message: `Удалено записей: ${res.deleted}` })
+    } catch (err) {
+      setResult({ type: 'error', message: err instanceof Error ? err.message : 'Ошибка очистки' })
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  return (
+    <div className="admin-section">
+      <h2 className="admin-section__title">Поддержка Уютной фермы</h2>
+      <p className="admin-section__desc">
+        Экспорт и импорт борды UID. Импорт дополняет текущий список: уже существующие UID не
+        затираются и не дублируются. Сейчас записей: {count ?? '…'}.
+      </p>
+
+      {result && (
+        <div className={`admin-result admin-result--${result.type}`}>{result.message}</div>
+      )}
+
+      <div className="admin-backup-section">
+        <h3>Экспорт</h3>
+        <div className="admin-backup-actions">
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void handleExport()}
+            disabled={exporting}
+          >
+            {exporting ? 'Экспорт…' : 'Скачать JSON'}
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-backup-section">
+        <h3>Импорт</h3>
+        <nav className="tabs admin-import-tabs" aria-label="Источник импорта">
+          {(['sosoc', 'tatary'] as const).map((source) => (
+            <button
+              key={source}
+              type="button"
+              className={`tabs__btn ${importSource === source ? 'is-active' : ''}`}
+              onClick={() => setImportSource(source)}
+            >
+              {IMPORT_SOURCE_META[source].label}
+            </button>
+          ))}
+        </nav>
+        <p className="admin-section__desc">{importMeta.desc}</p>
+        <div className="admin-backup-actions">
+          <label className="btn btn--outline admin-backup-file-label">
+            Загрузить файл
+            <input
+              type="file"
+              accept=".json,.txt"
+              onChange={(e) => void handleImportFile(e)}
+              disabled={importing}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
+        <div className="admin-backup-paste">
+          <textarea
+            className="admin-backup-textarea"
+            placeholder={importMeta.placeholder}
+            value={importText}
+            onChange={(e) =>
+              setImportTexts((prev) => ({ ...prev, [importSource]: e.target.value }))
+            }
+            rows={6}
+          />
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void handleImportText()}
+            disabled={importing || !importText.trim()}
+          >
+            {importing ? 'Импорт…' : 'Импортировать'}
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-backup-section">
+        <h3>Очистка</h3>
+        <div className="admin-backup-actions">
+          <button
+            type="button"
+            className="btn btn--danger"
+            onClick={() => void handleClear()}
+            disabled={clearing || count === 0}
+          >
+            {clearing ? 'Очистка…' : 'Очистить список'}
           </button>
         </div>
       </div>

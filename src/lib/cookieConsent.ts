@@ -17,27 +17,19 @@ function writeConsentCookie() {
 }
 
 export function hasCookieConsent(): boolean {
-  try {
-    if (localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY) === '1') return true
-  } catch {
-    // ignore
-  }
   return hasConsentCookie()
 }
 
 /** If older clients only stored localStorage, mirror it into the consent cookie for the API. */
 export function syncCookieConsentCookie(): boolean {
-  const accepted = hasCookieConsent()
-  if (!accepted) return false
-  if (!hasConsentCookie()) writeConsentCookie()
   try {
-    if (localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY) !== '1') {
-      localStorage.setItem(COOKIE_CONSENT_STORAGE_KEY, '1')
+    if (localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY) === '1' && !hasConsentCookie()) {
+      writeConsentCookie()
     }
   } catch {
     // ignore
   }
-  return true
+  return hasConsentCookie()
 }
 
 export function acceptCookieConsent() {
