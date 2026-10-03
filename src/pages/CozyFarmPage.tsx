@@ -100,10 +100,11 @@ function CozyFarmShell() {
 
   const isSuperadmin = user.permissions.includes('roles:manage')
   const isAdmin = user.permissions.includes('admin:access')
+  const canModerate = isAdmin || isSuperadmin
   const myProfileIds = new Set(profiles.profiles.map((p) => p.id))
   const canManageListing = (listing: CozyFarmListing) =>
-    myProfileIds.has(listing.profileId) || isAdmin
-  const showManageColumn = isAdmin || listings.some((l) => myProfileIds.has(l.profileId))
+    myProfileIds.has(listing.profileId) || canModerate
+  const showManageColumn = canModerate || listings.some((l) => myProfileIds.has(l.profileId))
   const emptyBonuses = (): Record<CozyFarmFruit, string> => ({
     dragonfruit: '',
     carrot: '',
@@ -115,9 +116,16 @@ function CozyFarmShell() {
 
   const resetForm = () => {
     setEditingId(null)
-    setGameUid('')
+    setGameUid(profiles.activeProfile?.gameUid ?? '')
     setBonuses(emptyBonuses())
   }
+
+  useEffect(() => {
+    if (editingId) return
+    const uid = profiles.activeProfile?.gameUid
+    if (!uid) return
+    setGameUid((current) => (current === '' ? uid : current))
+  }, [editingId, profiles.activeProfile?.gameUid])
 
   const startEdit = (listing: CozyFarmListing) => {
     setEditingId(listing.id)
@@ -208,8 +216,9 @@ function CozyFarmShell() {
   }
 
   const buildPayload = (): CozyFarmListingInput | null => {
-    const payload: CozyFarmListingInput = {}
-    if (editingId && gameUid.trim()) payload.gameUid = gameUid.trim()
+    const uid = gameUid.trim()
+    if (!uid) return null
+    const payload: CozyFarmListingInput = { gameUid: uid }
     let hasBonus = false
     for (const fruit of COZY_FARM_FRUITS) {
       const value = parseBonus(bonuses[fruit])
@@ -222,6 +231,10 @@ function CozyFarmShell() {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!gameUid.trim()) {
+      setError(t('cozyFarm.uidRequired'))
+      return
+    }
     const payload = buildPayload()
     if (!payload) {
       setError(t('cozyFarm.bonusRequired'))
@@ -368,17 +381,16 @@ function CozyFarmShell() {
                   })}
                 </p>
               )}
-              {editingId && (
-                <label className="cozy-field">
-                  <span>{t('cozyFarm.gameUid')}</span>
-                  <input
-                    value={gameUid}
-                    onChange={(e) => setGameUid(e.target.value)}
-                    maxLength={64}
-                    autoComplete="off"
-                  />
-                </label>
-              )}
+              <label className="cozy-field">
+                <span>{t('cozyFarm.gameUid')}</span>
+                <input
+                  value={gameUid}
+                  onChange={(e) => setGameUid(e.target.value)}
+                  required
+                  maxLength={64}
+                  autoComplete="off"
+                />
+              </label>
 
               <fieldset className="cozy-bonuses">
                 <legend>{t('cozyFarm.bonuses')}</legend>
@@ -432,7 +444,7 @@ function CozyFarmShell() {
             <table className="cozy-table">
               <thead>
                 <tr>
-                  <th>{t('cozyFarm.profile')}</th>
+                  <th>{canModerate ? t('cozyFarm.profile') : t('cozyFarm.gameUid')}</th>
                   {COZY_FARM_FRUITS.map((fruit) => {
                     const active = fruitSort?.fruit === fruit
                     const label = t(FRUIT_LABEL[fruit])
@@ -475,7 +487,9 @@ function CozyFarmShell() {
                   <tr key={listing.id}>
                     <td>
                       <div className="cozy-table__profile">
-                        <strong>{listing.nickname}</strong>
+                        {canModerate && listing.nickname && (
+                          <strong>{listing.nickname}</strong>
+                        )}
                         <button
                           type="button"
                           className={`cozy-table__uid${copiedUidId === listing.id ? ' is-copied' : ''}`}

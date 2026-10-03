@@ -4,7 +4,6 @@ import { z } from 'zod'
 import type { Db } from '../db/index.js'
 import {
   cardTradeProfileStates,
-  cozyFarmListings,
   profileClaims,
   profileMembers,
   profileStates,
@@ -360,7 +359,6 @@ export function createProfilesRoutes(db: Db, env: { TRUST_PROXY?: boolean }) {
           .where(eq(profileStates.profileId, profileId))
       }
 
-      await tx.delete(cozyFarmListings).where(eq(cozyFarmListings.profileId, profileId))
     })
 
     const next = await resolveActiveProfile(db, user.id, null)
