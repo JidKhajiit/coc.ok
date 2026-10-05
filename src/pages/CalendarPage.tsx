@@ -5,6 +5,9 @@ import { useI18n } from '../i18n'
 import * as api from '../api/client'
 import type { SiteEventScheduleEntry } from '../api/client'
 import {
+  addIsoDays,
+  daysBetweenIso,
+  eventDateWindow,
   inclusiveDayCount,
   phaseForEventDay,
   type EventPhase,
@@ -109,8 +112,8 @@ type TimelineBar = {
   colStart: number
   /** 1-based grid column end (exclusive) */
   colEnd: number
-  /** Day-of-event number + phase for each visible column */
-  segments: Array<{ dayNumber: number; phase: EventPhase }>
+  /** Event-day number (active days only) + phase for each visible column */
+  segments: Array<{ dayNumber: number | null; phase: EventPhase }>
 }
 
 /** Fixed window: yesterday … yesterday + 1 calendar month. */
@@ -193,15 +196,27 @@ function packBarsForWeek(
       laneEnds[lane] = clippedEnd
     }
 
-    const eventDayOffset = daysBetween(entry.startDate, clippedStart)
-    const totalDays = inclusiveDayCount(entry.startDate, entry.endDate)
+    const dates = eventDateWindow(entry)
     const segments = Array.from({ length: span }, (_, i) => {
-      const dayNumber = eventDayOffset + i + 1
+      const dayIso = addIsoDays(clippedStart, i)
+      if (dates.eventStart <= dates.eventEnd) {
+        if (dayIso < dates.eventStart) {
+          return { dayNumber: null, phase: 'registration' as const }
+        }
+        if (dayIso > dates.eventEnd) {
+          return { dayNumber: null, phase: 'rewards' as const }
+        }
+        return {
+          dayNumber: daysBetweenIso(dates.eventStart, dayIso) + 1,
+          phase: 'active' as const,
+        }
+      }
+      const dayNumber = daysBetweenIso(entry.startDate, dayIso) + 1
       return {
         dayNumber,
         phase: phaseForEventDay(
           dayNumber,
-          totalDays,
+          inclusiveDayCount(entry.startDate, entry.endDate),
           entry.registrationDays,
           entry.rewardDays,
         ),
@@ -333,14 +348,16 @@ function CalendarContent() {
                               {name}
                             </div>
                             <div className="tl-bar__body">
-                              {bar.segments.map((seg) => (
+                              {bar.segments.map((seg, index) => (
                                 <div
-                                  key={`${bar.entry.id}-${seg.dayNumber}`}
+                                  key={`${bar.entry.id}-${index}`}
                                   className={`tl-bar__seg tl-bar__seg--${seg.phase}`}
                                 >
-                                  <span className="tl-bar__daynum">
-                                    {dayOrdinalLabel(seg.dayNumber, isRu)}
-                                  </span>
+                                  {seg.dayNumber != null && (
+                                    <span className="tl-bar__daynum">
+                                      {dayOrdinalLabel(seg.dayNumber, isRu)}
+                                    </span>
+                                  )}
                                   <span className="tl-bar__phase">
                                     {phaseLabel(seg.phase, t)}
                                   </span>

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useOutletContext } from 'react-router-dom'
 import type { SiteEventScheduleEntry, SiteEventType } from '../api/client'
+import { AdminDateRangeField } from '../components/AdminDateRangeField'
 import * as api from '../api/client'
+import {
+  addIsoDays,
+  calendarSpanFromEventDates,
+  eventDateWindow,
+} from '../lib/calendarPhases'
 
 type CalendarAdminContext = {
   user: { permissions: string[] }
@@ -60,6 +67,7 @@ export function AdminCalendarTab() {
 
   const [typeForm, setTypeForm] = useState<TypeForm>(EMPTY_TYPE)
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null)
+  const [typeModalOpen, setTypeModalOpen] = useState(false)
   const [savingType, setSavingType] = useState(false)
 
   const [scheduleForm, setScheduleForm] = useState<ScheduleForm>(EMPTY_SCHEDULE)
@@ -94,6 +102,18 @@ export function AdminCalendarTab() {
     setTypeForm(EMPTY_TYPE)
   }
 
+  const closeTypeModal = () => {
+    setTypeModalOpen(false)
+    resetTypeForm()
+  }
+
+  const openCreateType = () => {
+    resetTypeForm()
+    setTypeModalOpen(true)
+    setResult(null)
+    setError(null)
+  }
+
   const resetScheduleForm = () => {
     setEditingScheduleId(null)
     setScheduleForm(EMPTY_SCHEDULE)
@@ -109,16 +129,22 @@ export function AdminCalendarTab() {
       color: type.color ?? '',
       icon: type.icon ?? '',
     })
+    setTypeModalOpen(true)
     setResult(null)
     setError(null)
   }
 
   const startEditSchedule = (entry: SiteEventScheduleEntry) => {
+    const window = eventDateWindow(entry)
+    const eventDates =
+      window.eventStart <= window.eventEnd
+        ? { startDate: window.eventStart, endDate: window.eventEnd }
+        : { startDate: entry.startDate, endDate: entry.endDate }
     setEditingScheduleId(entry.id)
     setScheduleForm({
       eventTypeId: entry.eventTypeId,
-      startDate: entry.startDate,
-      endDate: entry.endDate,
+      startDate: eventDates.startDate,
+      endDate: eventDates.endDate,
       hasRegistrationDay: entry.registrationDays > 0,
       hasRewardDay: entry.rewardDays > 0,
     })
@@ -168,7 +194,7 @@ export function AdminCalendarTab() {
         })
         setResult('Тип эвента создан')
       }
-      resetTypeForm()
+      closeTypeModal()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить тип эвента')
@@ -183,7 +209,7 @@ export function AdminCalendarTab() {
     setResult(null)
     try {
       await api.deleteAdminCalendarType(id)
-      if (editingTypeId === id) resetTypeForm()
+      if (editingTypeId === id) closeTypeModal()
       setResult('Тип эвента удалён')
       await refresh()
     } catch (err) {
@@ -196,12 +222,20 @@ export function AdminCalendarTab() {
     setError(null)
     setResult(null)
     try {
+      const registrationDays = scheduleForm.hasRegistrationDay ? 1 : 0
+      const rewardDays = scheduleForm.hasRewardDay ? 1 : 0
+      const span = calendarSpanFromEventDates({
+        eventStart: scheduleForm.startDate,
+        eventEnd: scheduleForm.endDate,
+        registrationDays,
+        rewardDays,
+      })
       const payload = {
         eventTypeId: scheduleForm.eventTypeId,
-        startDate: scheduleForm.startDate,
-        endDate: scheduleForm.endDate,
-        registrationDays: scheduleForm.hasRegistrationDay ? 1 : 0,
-        rewardDays: scheduleForm.hasRewardDay ? 1 : 0,
+        startDate: span.startDate,
+        endDate: span.endDate,
+        registrationDays,
+        rewardDays,
       }
       if (editingScheduleId) {
         await api.updateAdminCalendarSchedule(editingScheduleId, payload)
@@ -232,6 +266,20 @@ export function AdminCalendarTab() {
       setError(err instanceof Error ? err.message : 'Не удалось удалить запись')
     }
   }
+
+  useEffect(() => {
+    if (!typeModalOpen) return
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeTypeModal()
+    }
+    document.addEventListener('keydown', onKey)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [typeModalOpen])
 
   if (loading) return <div className="admin-loading">Загрузка…</div>
 
@@ -283,101 +331,15 @@ export function AdminCalendarTab() {
         </div>
       )}
 
-      {canManage && (
-        <div className="admin-form">
-          <h3 className="admin-form__title">
-            {editingTypeId ? 'Редактирование типа эвента' : 'Новый тип эвента'}
-          </h3>
-
-          <div className="admin-form__field">
-            <label>Название (RU)</label>
-            <input
-              type="text"
-              value={typeForm.nameRu}
-              onChange={(e) => setTypeForm((prev) => ({ ...prev, nameRu: e.target.value }))}
-              placeholder="Уютная ферма"
-            />
-          </div>
-
-          <div className="admin-form__field">
-            <label>Название (EN)</label>
-            <input
-              type="text"
-              value={typeForm.nameEn}
-              onChange={(e) => setTypeForm((prev) => ({ ...prev, nameEn: e.target.value }))}
-              placeholder="Cozy Farm"
-            />
-          </div>
-
-          <div className="admin-form__field">
-            <label>Slug</label>
-            <input
-              type="text"
-              value={typeForm.slug}
-              onChange={(e) => setTypeForm((prev) => ({ ...prev, slug: e.target.value }))}
-              placeholder="cozy-farm"
-              disabled={Boolean(editingTypeId)}
-            />
-          </div>
-
-          <div className="admin-form__field">
-            <label>Путь на сайте (опционально)</label>
-            <input
-              type="text"
-              value={typeForm.path}
-              onChange={(e) => setTypeForm((prev) => ({ ...prev, path: e.target.value }))}
-              placeholder="/cozy-farm"
-            />
-          </div>
-
-          <div className="admin-form__field">
-            <label>Цвет (hex, опционально)</label>
-            <input
-              type="text"
-              value={typeForm.color}
-              onChange={(e) => setTypeForm((prev) => ({ ...prev, color: e.target.value }))}
-              placeholder="#2f7a55"
-            />
-            <small className="admin-muted">Подсветка блока на главной и полоски в календаре.</small>
-          </div>
-
-          <div className="admin-form__field">
-            <label>Иконка (опционально)</label>
-            <input
-              type="text"
-              value={typeForm.icon}
-              onChange={(e) => setTypeForm((prev) => ({ ...prev, icon: e.target.value }))}
-              placeholder="🎣"
-              maxLength={16}
-            />
-            <small className="admin-muted">Эмодзи или короткий символ справа в блоке на главной.</small>
-          </div>
-
-          <div className="admin-form__actions">
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={
-                savingType ||
-                !typeForm.nameRu.trim() ||
-                !typeForm.nameEn.trim() ||
-                (!editingTypeId && !typeForm.slug.trim())
-              }
-              onClick={() => void handleSaveType()}
-            >
-              {savingType ? 'Сохранение…' : editingTypeId ? 'Сохранить' : 'Создать тип'}
-            </button>
-            {editingTypeId && (
-              <button type="button" className="btn btn--outline" onClick={resetTypeForm}>
-                Отмена
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="admin-table-wrap">
-        <h3 className="admin-form__title">Каталог типов</h3>
+        <div className="admin-section__header">
+          <h3 className="admin-form__title">Каталог типов</h3>
+          {canManage && (
+            <button type="button" className="btn btn--outline" onClick={openCreateType}>
+              Новый тип
+            </button>
+          )}
+        </div>
         {types.length === 0 ? (
           <p className="admin-muted">Типов пока нет</p>
         ) : (
@@ -434,6 +396,138 @@ export function AdminCalendarTab() {
         )}
       </div>
 
+      {canManage &&
+        typeModalOpen &&
+        createPortal(
+          <div className="admin-modal-root">
+            <button
+              type="button"
+              className="admin-modal__backdrop"
+              aria-label="Закрыть"
+              onClick={closeTypeModal}
+            />
+            <div
+              className="admin-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="event-type-modal-title"
+            >
+              <div className="admin-modal__head">
+                <h3 id="event-type-modal-title" className="admin-form__title">
+                  {editingTypeId ? 'Редактирование типа эвента' : 'Новый тип эвента'}
+                </h3>
+                <button
+                  type="button"
+                  className="admin-modal__close"
+                  aria-label="Закрыть"
+                  onClick={closeTypeModal}
+                >
+                  ×
+                </button>
+              </div>
+
+              {error && <div className="admin-result admin-result--error">{error}</div>}
+
+              <div className="admin-form admin-form--plain">
+                <div className="admin-form__field">
+                  <label htmlFor="event-type-name-ru">Название (RU)</label>
+                  <input
+                    id="event-type-name-ru"
+                    type="text"
+                    value={typeForm.nameRu}
+                    onChange={(e) => setTypeForm((prev) => ({ ...prev, nameRu: e.target.value }))}
+                    placeholder="Уютная ферма"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="admin-form__field">
+                  <label htmlFor="event-type-name-en">Название (EN)</label>
+                  <input
+                    id="event-type-name-en"
+                    type="text"
+                    value={typeForm.nameEn}
+                    onChange={(e) => setTypeForm((prev) => ({ ...prev, nameEn: e.target.value }))}
+                    placeholder="Cozy Farm"
+                  />
+                </div>
+
+                <div className="admin-form__field">
+                  <label htmlFor="event-type-slug">Slug</label>
+                  <input
+                    id="event-type-slug"
+                    type="text"
+                    value={typeForm.slug}
+                    onChange={(e) => setTypeForm((prev) => ({ ...prev, slug: e.target.value }))}
+                    placeholder="cozy-farm"
+                    disabled={Boolean(editingTypeId)}
+                  />
+                </div>
+
+                <div className="admin-form__field">
+                  <label htmlFor="event-type-path">Путь на сайте (опционально)</label>
+                  <input
+                    id="event-type-path"
+                    type="text"
+                    value={typeForm.path}
+                    onChange={(e) => setTypeForm((prev) => ({ ...prev, path: e.target.value }))}
+                    placeholder="/cozy-farm"
+                  />
+                </div>
+
+                <div className="admin-form__field">
+                  <label htmlFor="event-type-color">Цвет (hex, опционально)</label>
+                  <input
+                    id="event-type-color"
+                    type="text"
+                    value={typeForm.color}
+                    onChange={(e) => setTypeForm((prev) => ({ ...prev, color: e.target.value }))}
+                    placeholder="#2f7a55"
+                  />
+                  <small className="admin-muted">
+                    Подсветка блока на главной и полоски в календаре.
+                  </small>
+                </div>
+
+                <div className="admin-form__field">
+                  <label htmlFor="event-type-icon">Иконка (опционально)</label>
+                  <input
+                    id="event-type-icon"
+                    type="text"
+                    value={typeForm.icon}
+                    onChange={(e) => setTypeForm((prev) => ({ ...prev, icon: e.target.value }))}
+                    placeholder="🎣"
+                    maxLength={16}
+                  />
+                  <small className="admin-muted">
+                    Эмодзи или короткий символ справа в блоке на главной.
+                  </small>
+                </div>
+
+                <div className="admin-form__actions">
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={
+                      savingType ||
+                      !typeForm.nameRu.trim() ||
+                      !typeForm.nameEn.trim() ||
+                      (!editingTypeId && !typeForm.slug.trim())
+                    }
+                    onClick={() => void handleSaveType()}
+                  >
+                    {savingType ? 'Сохранение…' : editingTypeId ? 'Сохранить' : 'Создать тип'}
+                  </button>
+                  <button type="button" className="btn btn--outline" onClick={closeTypeModal}>
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {canManage && (
         <div className="admin-form">
           <h3 className="admin-form__title">
@@ -458,23 +552,17 @@ export function AdminCalendarTab() {
           </div>
 
           <div className="admin-form__field">
-            <label>Дата начала</label>
-            <input
-              type="date"
-              value={scheduleForm.startDate}
-              onChange={(e) =>
-                setScheduleForm((prev) => ({ ...prev, startDate: e.target.value }))
+            <label>Дни ивента</label>
+            <AdminDateRangeField
+              startDate={scheduleForm.startDate}
+              endDate={scheduleForm.endDate}
+              onChange={(startDate, endDate) =>
+                setScheduleForm((prev) => ({ ...prev, startDate, endDate }))
               }
             />
-          </div>
-
-          <div className="admin-form__field">
-            <label>Дата окончания</label>
-            <input
-              type="date"
-              value={scheduleForm.endDate}
-              onChange={(e) => setScheduleForm((prev) => ({ ...prev, endDate: e.target.value }))}
-            />
+            <p className="admin-muted">
+              Указывайте только дни самого ивента. Регистрация и сбор наград в эти даты не входят.
+            </p>
           </div>
 
           <div className="admin-form__field">
@@ -489,8 +577,13 @@ export function AdminCalendarTab() {
                   }))
                 }
               />
-              День регистрации (первый день)
+              День регистрации (день перед началом)
             </label>
+            {scheduleForm.hasRegistrationDay && scheduleForm.startDate && (
+              <p className="admin-muted">
+                Регистрация: {addIsoDays(scheduleForm.startDate, -1)}
+              </p>
+            )}
           </div>
 
           <div className="admin-form__field">
@@ -505,8 +598,11 @@ export function AdminCalendarTab() {
                   }))
                 }
               />
-              День сбора наград (последний день)
+              День сбора наград (день после окончания)
             </label>
+            {scheduleForm.hasRewardDay && scheduleForm.endDate && (
+              <p className="admin-muted">Сбор наград: {addIsoDays(scheduleForm.endDate, 1)}</p>
+            )}
           </div>
 
           <div className="admin-form__actions">
@@ -553,7 +649,10 @@ export function AdminCalendarTab() {
               </tr>
             </thead>
             <tbody>
-              {schedule.map((entry) => (
+              {schedule.map((entry) => {
+                const dates = eventDateWindow(entry)
+                const showEventDates = dates.eventStart <= dates.eventEnd
+                return (
                 <tr key={entry.id}>
                   <td>
                     <span
@@ -567,10 +666,10 @@ export function AdminCalendarTab() {
                     />
                     {entry.event.nameRu}
                   </td>
-                  <td>{entry.startDate}</td>
-                  <td>{entry.endDate}</td>
-                  <td>{entry.registrationDays ? 'да' : '—'}</td>
-                  <td>{entry.rewardDays ? 'да' : '—'}</td>
+                  <td>{showEventDates ? dates.eventStart : entry.startDate}</td>
+                  <td>{showEventDates ? dates.eventEnd : entry.endDate}</td>
+                  <td>{dates.registrationDate ?? '—'}</td>
+                  <td>{dates.rewardDate ?? '—'}</td>
                   <td className="admin-table__actions">
                     {canManage && (
                       <>
@@ -592,7 +691,8 @@ export function AdminCalendarTab() {
                     )}
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         )}

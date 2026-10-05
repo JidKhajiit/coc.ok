@@ -354,13 +354,19 @@ export const siteEventSchedule = pgTable(
     eventTypeId: uuid('event_type_id')
       .notNull()
       .references(() => siteEventTypes.id, { onDelete: 'cascade' }),
-    /** ISO date YYYY-MM-DD */
+    /**
+     * Inclusive calendar span, ISO YYYY-MM-DD.
+     * When registrationDays is 1, this day is registration and the event starts the next day.
+     */
     startDate: text('start_date').notNull(),
-    /** ISO date YYYY-MM-DD */
+    /**
+     * Inclusive calendar span, ISO YYYY-MM-DD.
+     * When rewardDays is 1, this day is reward collection and the event ends the day before.
+     */
     endDate: text('end_date').notNull(),
-    /** 1 = first day is registration, 0 = none. */
+    /** 1 = startDate is the registration day before the event, 0 = none. */
     registrationDays: integer('registration_days').notNull().default(0),
-    /** 1 = last day is reward collection, 0 = none. */
+    /** 1 = endDate is the reward-collection day after the event, 0 = none. */
     rewardDays: integer('reward_days').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
