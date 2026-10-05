@@ -6,6 +6,7 @@ import { PublicChrome } from '../components/PublicChrome'
 import { SiteFooter } from '../components/SiteFooter'
 import { BRAND_NAME } from '../brand'
 import * as api from '../api/client'
+import { daysBetweenIso, eventDateWindow, type EventDateWindow } from '../lib/calendarPhases'
 import '../App.css'
 
 type Localized = { ru: string; en: string }
@@ -13,10 +14,12 @@ type Localized = { ru: string; en: string }
 type SiteEvent = {
   id: string
   name: Localized
-  /** ISO date YYYY-MM-DD */
+  /** ISO date YYYY-MM-DD. For calendar events this is the stored span, including registration. */
   start?: string
-  /** ISO date YYYY-MM-DD */
+  /** ISO date YYYY-MM-DD. For calendar events this is the stored span, including reward collection. */
   end: string
+  registrationDays?: number
+  rewardDays?: number
   path?: string
   color?: string
   icon?: string
@@ -102,32 +105,44 @@ function formatDate(iso: string, isRu: boolean): string {
   })
 }
 
+function windowFor(event: SiteEvent): EventDateWindow {
+  return eventDateWindow({
+    startDate: event.start ?? event.end,
+    endDate: event.end,
+    registrationDays: event.registrationDays,
+    rewardDays: event.rewardDays,
+  })
+}
+
 function formatEventDates(event: SiteEvent, isRu: boolean): string {
-  if (event.start) {
-    return `${formatDate(event.start, isRu)} – ${formatDate(event.end, isRu)}`
+  const dates = windowFor(event)
+  if (event.start && dates.eventStart <= dates.eventEnd) {
+    return `${formatDate(dates.eventStart, isRu)} – ${formatDate(dates.eventEnd, isRu)}`
   }
   return isRu
     ? `до ${formatDate(event.end, isRu)}`
     : `until ${formatDate(event.end, isRu)}`
 }
 
-function daysUntil(iso: string): number {
-  const target = parseIsoDate(iso)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  target.setHours(0, 0, 0, 0)
-  return Math.max(0, Math.round((target.getTime() - today.getTime()) / 86_400_000))
+function daysUntil(iso: string, todayIso: string): number {
+  return Math.max(0, daysBetweenIso(todayIso, iso))
 }
 
 function isCurrentEvent(event: SiteEvent, todayIso: string): boolean {
-  if (event.start) {
-    return event.start <= todayIso && todayIso <= event.end
-  }
-  return todayIso <= event.end
+  const dates = windowFor(event)
+  if (dates.rewardDate && todayIso === dates.rewardDate) return true
+  if (!event.start) return todayIso <= event.end
+  if (dates.eventStart > dates.eventEnd) return false
+  return dates.eventStart <= todayIso && todayIso <= dates.eventEnd
 }
 
 function isUpcomingEvent(event: SiteEvent, todayIso: string): boolean {
-  return Boolean(event.start && todayIso < event.start)
+  if (!event.start) return false
+  const dates = windowFor(event)
+  if (dates.eventStart > dates.eventEnd) {
+    return dates.registrationDate != null && todayIso <= dates.registrationDate
+  }
+  return todayIso < dates.eventStart
 }
 
 function daysRu(n: number): string {
@@ -170,16 +185,52 @@ function eventHighlightStyle(color?: string): CSSProperties | undefined {
   } as CSSProperties
 }
 
+function eventNote(
+  event: SiteEvent,
+  todayIso: string,
+  mode: 'current' | 'upcoming',
+  isRu: boolean,
+): string | null {
+  const dates = windowFor(event)
+  if (mode === 'upcoming' && dates.registrationDate === todayIso) {
+    return isRu ? ' · регистрация' : ' · registration'
+  }
+  if (mode === 'current' && dates.rewardDate === todayIso) {
+    return isRu ? ' · сбор наград' : ' · reward claim'
+  }
+  if (
+    mode === 'current' &&
+    dates.eventStart <= dates.eventEnd &&
+    todayIso === dates.eventEnd
+  ) {
+    return isRu ? ' · последний день' : ' · last day'
+  }
+
+  const countdownIso = mode === 'upcoming' ? dates.eventStart : dates.eventEnd
+  const days = daysUntil(countdownIso, todayIso)
+  if (days <= 0) return null
+  if (mode === 'upcoming') {
+    return isRu
+      ? ` · через ${days} ${daysRu(days)}`
+      : ` · in ${days} day${days === 1 ? '' : 's'}`
+  }
+  return isRu
+    ? ` · ещё ${days} ${daysRu(days)}`
+    : ` · ${days} day${days === 1 ? '' : 's'} left`
+}
+
 function EventList({
   events,
   isRu,
   emptyLabel,
   mode,
+  todayIso,
 }: {
   events: SiteEvent[]
   isRu: boolean
   emptyLabel: string
   mode: 'current' | 'upcoming'
+  todayIso: string
 }) {
   if (events.length === 0) {
     return <p className="home-events-list__empty">{emptyLabel}</p>
@@ -188,20 +239,8 @@ function EventList({
   return (
     <ul className="home-events-list">
       {events.map((event) => {
-        const countdownIso =
-          mode === 'upcoming' ? (event.start ?? event.end) : event.end
-        const days = daysUntil(countdownIso)
         const title = isRu ? event.name.ru : event.name.en
-        const relative =
-          days > 0
-            ? mode === 'upcoming'
-              ? isRu
-                ? ` · через ${days} ${daysRu(days)}`
-                : ` · in ${days} day${days === 1 ? '' : 's'}`
-              : isRu
-                ? ` · ещё ${days} ${daysRu(days)}`
-                : ` · ${days} day${days === 1 ? '' : 's'} left`
-            : null
+        const relative = eventNote(event, todayIso, mode, isRu)
         const main = (
           <div className="home-events-list__main">
             <span className="home-events-list__name">{title}</span>
@@ -266,6 +305,8 @@ function HomeContent() {
             name: { ru: entry.event.nameRu, en: entry.event.nameEn },
             start: entry.startDate,
             end: entry.endDate,
+            registrationDays: entry.registrationDays,
+            rewardDays: entry.rewardDays,
             path: entry.event.path ?? undefined,
             color: entry.event.color ?? undefined,
             icon: entry.event.icon ?? undefined,
@@ -378,14 +419,28 @@ function HomeContent() {
     () =>
       allEvents
         .filter((event) => isCurrentEvent(event, todayIso))
-        .sort((a, b) => a.end.localeCompare(b.end) || (a.start ?? a.end).localeCompare(b.start ?? b.end)),
+        .sort((a, b) => {
+          const aDates = windowFor(a)
+          const bDates = windowFor(b)
+          return (
+            aDates.eventEnd.localeCompare(bDates.eventEnd) ||
+            aDates.eventStart.localeCompare(bDates.eventStart)
+          )
+        }),
     [allEvents, todayIso],
   )
   const upcomingEvents = useMemo(
     () =>
       allEvents
         .filter((event) => isUpcomingEvent(event, todayIso))
-        .sort((a, b) => (a.start ?? a.end).localeCompare(b.start ?? b.end) || a.end.localeCompare(b.end))
+        .sort((a, b) => {
+          const aDates = windowFor(a)
+          const bDates = windowFor(b)
+          return (
+            aDates.eventStart.localeCompare(bDates.eventStart) ||
+            aDates.eventEnd.localeCompare(bDates.eventEnd)
+          )
+        })
         .slice(0, upcomingLimit),
     [allEvents, todayIso, upcomingLimit],
   )
@@ -421,6 +476,7 @@ function HomeContent() {
               events={currentEvents}
               isRu={isRu}
               mode="current"
+              todayIso={todayIso}
               emptyLabel={isRu ? 'Сейчас нет активных событий' : 'No active events right now'}
             />
           </div>
@@ -430,6 +486,7 @@ function HomeContent() {
               events={upcomingEvents}
               isRu={isRu}
               mode="upcoming"
+              todayIso={todayIso}
               emptyLabel={isRu ? 'Пока нет анонсов' : 'No announcements yet'}
             />
           </div>

@@ -3779,6 +3779,72 @@ h4 {
   margin: 0 0 16px;
 }
 
+.admin-section__header .admin-form__title {
+  margin-bottom: 0;
+}
+
+.admin-form--plain {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.admin-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(8, 14, 11, 0.48);
+  cursor: pointer;
+}
+
+.admin-modal {
+  position: relative;
+  width: min(480px, 100%);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  background: var(--surface-strong);
+  color: var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(8, 20, 14, 0.28);
+  padding: 20px 20px 8px;
+}
+
+.admin-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.admin-modal__close {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  background: rgba(36, 63, 50, 0.08);
+  color: var(--ink-soft);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-modal__close:hover {
+  background: rgba(36, 63, 50, 0.14);
+}
+
 .admin-form__field {
   margin-bottom: 14px;
 }
@@ -5532,6 +5598,105 @@ a.public-chrome__btn--icon:hover {
   background: #2f7a55;
   margin-right: 8px;
   vertical-align: middle;
+}
+
+.admin-range {
+  max-width: 320px;
+}
+
+.admin-range__summary {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  font-weight: var(--fw-semibold);
+  color: var(--ink);
+}
+
+.admin-range__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.admin-range__month {
+  font-size: 0.92rem;
+  font-weight: var(--fw-semibold);
+  text-transform: capitalize;
+}
+
+.admin-range__nav-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-range__nav-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.admin-range__weekdays,
+.admin-range__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.admin-range__weekdays {
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+  text-align: center;
+}
+
+.admin-range__day {
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.admin-range__day.is-out {
+  color: var(--muted);
+}
+
+.admin-range__day.is-in {
+  background: rgba(47, 122, 85, 0.16);
+  border-radius: 0;
+}
+
+.admin-range__day.is-start,
+.admin-range__day.is-end {
+  background: var(--accent);
+  color: #fff;
+  font-weight: var(--fw-semibold);
+}
+
+.admin-range__day.is-start {
+  border-radius: 8px 0 0 8px;
+}
+
+.admin-range__day.is-end {
+  border-radius: 0 8px 8px 0;
+}
+
+.admin-range__day.is-single {
+  border-radius: 8px;
+}
+
+.admin-range__day:hover {
+  outline: 1px solid var(--accent);
 }
 
 .admin-form__field select,
