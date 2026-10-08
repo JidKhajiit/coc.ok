@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom'
 import type { CardSet } from '../data/cards'
 import { useAppState } from '../hooks/useAppState'
+import { useOfferCounts } from '../hooks/useOfferCounts'
 import { writeStoredLocale } from '../hooks/usePersistedLocale'
 import { CollectionView } from '../components/CollectionView'
 import { WishlistView } from '../components/WishlistView'
@@ -17,6 +18,7 @@ import { DAILY_BONUS_TRADE_LIMIT, DAILY_TRADE_INITIATION_LIMIT, type Card, type 
 import type { CardTradeEvent, CardTradeEventTrends } from '../api/client'
 import * as api from '../api/client'
 import { collectionsListPath, eventPath, eventTabPath } from '../lib/events'
+import { isCardTradeEventWritable } from '../../shared/eventAccess'
 import '../App.css'
 
 const SAVE_TOAST_MS = 3000
@@ -33,9 +35,11 @@ function tabRoutes(eventSlug: string): { id: TabId; path: string }[] {
 function CardTradesShell({
   app,
   event,
+  eventWritable,
 }: {
   app: ReturnType<typeof useAppState>
   event: CardTradeEvent
+  eventWritable: boolean
 }) {
   const { user, logout, uploadAvatar, accounts, switchAccount, removeAccount, addAccount, profiles, patchActiveProfileId } =
     useOutletContext<AuthOutletContext>()
@@ -43,7 +47,12 @@ function CardTradesShell({
   const [saveToast, setSaveToast] = useState<string | null>(null)
   const wasSavingRef = useRef(false)
   const { t, locale, setLocale } = useI18n()
-  const routes = useMemo(() => tabRoutes(event.slug), [event.slug])
+  const routes = useMemo(() => {
+    const all = tabRoutes(event.slug)
+    if (eventWritable) return all
+    return all.filter((r) => r.id !== 'wishlist' && r.id !== 'trades')
+  }, [event.slug, eventWritable])
+  const eventReadOnly = !eventWritable
 
   useEffect(() => {
     writeStoredLocale(normalizeLocale(app.state.locale))
@@ -166,6 +175,7 @@ function CardTradesShell({
         onImportText={app.importBackupText}
         eventSlug={event.slug}
         eventName={event.name}
+        readOnly={eventReadOnly}
       />
 
       {profiles.loading || app.loading ? (
@@ -179,6 +189,11 @@ function CardTradesShell({
           <header className="hero">
             <Link to="/card-trades" className="hero__home-link">← {t('app.backToTracker')}</Link>
             <h1 className="hero__title">{event.name}</h1>
+            {eventReadOnly && (
+              <p className="hero__lead panel__status" role="status">
+                {t('app.eventReadOnly')}
+              </p>
+            )}
 
             <div className="hero__stats">
               <div
@@ -244,7 +259,7 @@ function CardTradesShell({
                     type="button"
                     className="stat__step"
                     aria-label={t('app.stat.attemptsDown')}
-                    disabled={attemptsLeft <= 0}
+                    disabled={eventReadOnly || attemptsLeft <= 0}
                     onClick={() => app.adjustTradeAttemptsLeft(-1)}
                   >
                     −
@@ -259,7 +274,7 @@ function CardTradesShell({
                     type="button"
                     className="stat__step"
                     aria-label={t('app.stat.attemptsUp')}
-                    disabled={attemptsLeft >= DAILY_TRADE_INITIATION_LIMIT}
+                    disabled={eventReadOnly || attemptsLeft >= DAILY_TRADE_INITIATION_LIMIT}
                     onClick={() => app.adjustTradeAttemptsLeft(1)}
                   >
                     +
@@ -285,7 +300,7 @@ function CardTradesShell({
           </nav>
 
           <main className="main">
-            <Outlet context={{ app, user, event }} />
+            <Outlet context={{ app, user, event, eventWritable }} />
           </main>
 
           <SiteFooter />
@@ -298,12 +313,14 @@ function CardTradesShell({
 export type CardTradesOutletContext = {
   app: ReturnType<typeof useAppState>
   user: import('../api/client').AuthUser
-  event: { slug: string; name: string; cards: Card[]; sets: CardSet[] }
+  event: { slug: string; name: string; cards: Card[]; sets: CardSet[]; active: boolean; endDate: string }
+  eventWritable: boolean
 }
 
 export function CardTradesCollectionTab() {
-  const { app, event } = useOutletContext<CardTradesOutletContext>()
+  const { app, event, eventWritable } = useOutletContext<CardTradesOutletContext>()
   const [detailCard, setDetailCard] = useState<Card | null>(null)
+  const offerCounts = useOfferCounts(event.slug)
 
   return (
     <>
@@ -317,10 +334,12 @@ export function CardTradesCollectionTab() {
         reservedPartners={app.reservedPartners}
         tradeNeedCardIds={app.tradeNeedCardIds}
         tradeOffers={app.state.tradeOffers}
-        onAdjust={app.adjustOwned}
-        onToggleNeeded={app.toggleNeeded}
-        onSetNeededForAll={app.setNeededForAll}
-        onToggleStar={app.toggleStar}
+        offerCounts={eventWritable ? offerCounts : undefined}
+        readOnly={!eventWritable}
+        onAdjust={eventWritable ? app.adjustOwned : undefined}
+        onToggleNeeded={eventWritable ? app.toggleNeeded : undefined}
+        onSetNeededForAll={eventWritable ? app.setNeededForAll : undefined}
+        onToggleStar={eventWritable ? app.toggleStar : undefined}
         onCardClick={setDetailCard}
       />
       {detailCard && (
@@ -334,7 +353,24 @@ export function CardTradesCollectionTab() {
           neededAccountIds={app.state.neededBy[detailCard.id] ?? []}
           catalogCards={event.cards}
           tradeOffer={app.state.tradeOffers?.[detailCard.id] ?? null}
-          onChangeTradeOffer={(offer) => app.setTradeOffer(detailCard.id, offer)}
+          onChangeTradeOffer={
+            eventWritable ? (offer) => app.setTradeOffer(detailCard.id, offer) : undefined
+          }
+          offerTradeCount={
+            eventWritable &&
+            ((app.state.owned[detailCard.id] ?? 0) === 0 ||
+              (app.state.neededBy[detailCard.id] ?? []).length > 0)
+              ? (offerCounts[detailCard.id]?.trade ?? 0)
+              : 0
+          }
+          offerGiftCount={
+            eventWritable &&
+            ((app.state.owned[detailCard.id] ?? 0) === 0 ||
+              (app.state.neededBy[detailCard.id] ?? []).length > 0)
+              ? (offerCounts[detailCard.id]?.gift ?? 0)
+              : 0
+          }
+          eventWritable={eventWritable}
           signedIn
         />
       )}
@@ -343,8 +379,13 @@ export function CardTradesCollectionTab() {
 }
 
 export function CardTradesWishlistTab() {
-  const { app, event } = useOutletContext<CardTradesOutletContext>()
+  const { app, event, eventWritable } = useOutletContext<CardTradesOutletContext>()
   const [detailCard, setDetailCard] = useState<Card | null>(null)
+  const offerCounts = useOfferCounts(event.slug)
+
+  if (!eventWritable) {
+    return <Navigate to={eventPath(event.slug)} replace />
+  }
 
   return (
     <>
@@ -354,9 +395,11 @@ export function CardTradesWishlistTab() {
         neededBy={app.state.neededBy}
         owned={app.state.owned}
         tradeNeedCardIds={app.tradeNeedCardIds}
-        onToggleNeeded={app.toggleNeeded}
-        onSetNeededForAll={app.setNeededForAll}
-        onToggleStar={app.toggleStar}
+        offerCounts={eventWritable ? offerCounts : undefined}
+        readOnly={!eventWritable}
+        onToggleNeeded={eventWritable ? app.toggleNeeded : undefined}
+        onSetNeededForAll={eventWritable ? app.setNeededForAll : undefined}
+        onToggleStar={eventWritable ? app.toggleStar : undefined}
         onCardClick={setDetailCard}
       />
       {detailCard && (
@@ -368,6 +411,21 @@ export function CardTradesWishlistTab() {
           mode="own-wishlist"
           qty={app.state.owned[detailCard.id] ?? 0}
           neededAccountIds={app.state.neededBy[detailCard.id] ?? []}
+          offerTradeCount={
+            eventWritable &&
+            ((app.state.owned[detailCard.id] ?? 0) === 0 ||
+              (app.state.neededBy[detailCard.id] ?? []).length > 0)
+              ? (offerCounts[detailCard.id]?.trade ?? 0)
+              : 0
+          }
+          offerGiftCount={
+            eventWritable &&
+            ((app.state.owned[detailCard.id] ?? 0) === 0 ||
+              (app.state.neededBy[detailCard.id] ?? []).length > 0)
+              ? (offerCounts[detailCard.id]?.gift ?? 0)
+              : 0
+          }
+          eventWritable={eventWritable}
           signedIn
         />
       )}
@@ -376,7 +434,11 @@ export function CardTradesWishlistTab() {
 }
 
 export function CardTradesTradesTab() {
-  const { app, event } = useOutletContext<CardTradesOutletContext>()
+  const { app, event, eventWritable } = useOutletContext<CardTradesOutletContext>()
+
+  if (!eventWritable) {
+    return <Navigate to={eventPath(event.slug)} replace />
+  }
 
   return (
     <TradesView
@@ -386,6 +448,7 @@ export function CardTradesTradesTab() {
       trades={app.state.trades}
       potentialTrades={app.state.potentialTrades}
       reservedByCard={app.reservedByCard}
+      readOnly={!eventWritable}
       onAdd={app.addTrade}
       onRemove={app.removeTrade}
       onAddPotential={app.addPotentialTrade}
@@ -448,7 +511,13 @@ export function CardTradesPage() {
   const [event, setEvent] = useState<CardTradeEvent | null>(null)
   const [eventError, setEventError] = useState<string | null>(null)
   const [eventLoading, setEventLoading] = useState(true)
-  const app = useAppState(eventSlug, event?.cards ?? [], profiles.activeProfileId)
+  const eventWritable = event ? isCardTradeEventWritable(event) : false
+  const app = useAppState(
+    eventSlug,
+    event?.cards ?? [],
+    profiles.activeProfileId,
+    !eventWritable,
+  )
   const locale = normalizeLocale(app.state.locale)
 
   const setLocale = useCallback(
@@ -506,7 +575,7 @@ export function CardTradesPage() {
           </main>
         </div>
       ) : (
-        <CardTradesShell app={app} event={event} />
+        <CardTradesShell app={app} event={event} eventWritable={eventWritable} />
       )}
     </I18nProvider>
   )

@@ -15,6 +15,9 @@ uploads
 *.local
 .env
 
+# One-off local imports (may contain player UIDs)
+cozy-farm-support-import.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

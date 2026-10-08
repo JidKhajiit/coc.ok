@@ -12,6 +12,8 @@ interface Props {
   owned: Record<string, number>
   tradeNeedCardIds: Set<string>
   readOnly?: boolean
+  hideQty?: boolean
+  offerCounts?: Record<string, { trade: number; gift: number }>
   onCardClick?: (card: Card) => void
   onToggleNeeded?: (cardId: string, accountId: string) => void
   onSetNeededForAll?: (cardId: string, needed: boolean) => void
@@ -25,6 +27,8 @@ export function WishlistView({
   owned,
   tradeNeedCardIds,
   readOnly = false,
+  hideQty = false,
+  offerCounts,
   onCardClick,
   onToggleNeeded,
   onSetNeededForAll,
@@ -111,17 +115,23 @@ export function WishlistView({
             const isTradeNeed = tradeNeedCardIds.has(c.id)
             const allOn =
               favoriteFolders.length > 0 && favoriteFolders.every((a) => needed.includes(a.id))
+            // Marketplace badges only on missing or ♥ cards (own wishlist).
+            const showOffers = !readOnly && (qty === 0 || needed.length > 0)
+            const offers = showOffers ? offerCounts?.[c.id] : undefined
             return (
               <CardItem
                 key={c.id}
                 card={c}
-                qty={qty}
-                dimmed={qty > 0 && needed.length === 0 && !isTradeNeed}
+                qty={hideQty ? undefined : qty}
+                hideQty={hideQty}
+                offerTradeCount={offers?.trade}
+                offerGiftCount={offers?.gift}
+                dimmed={!hideQty && qty > 0 && needed.length === 0 && !isTradeNeed}
                 onClick={onCardClick ? () => onCardClick(c) : undefined}
                 actions={
                   readOnly ? (
                     <>
-                      {qty === 0 && <span className="pill pill--warn">×0</span>}
+                      {!hideQty && qty === 0 && <span className="pill pill--warn">×0</span>}
                       {needed.length > 0 && (
                         <span className="pill pill--need">
                           {needed.length > 0 ? '♥' : ''}

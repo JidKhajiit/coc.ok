@@ -1,7 +1,12 @@
 import type { AppState, Card, CardTradeOffer, FavoriteFolder, TrendItem } from '../types'
 import type { CardSet } from '../data/cards'
+import type { ReputationStats } from '../../shared/reputation'
 
 export type PopularityTier = 'S' | 'A' | 'B' | 'C' | 'D'
+
+export type CollectionFilterRole = 'needed' | 'trade' | 'gift'
+
+export type CardOfferCounts = Record<string, { trade: number; gift: number }>
 
 export type PublicCollection = {
   slug: string
@@ -19,6 +24,7 @@ export type PublicCollection = {
     tradesToday: number
     tradeAttemptsLeft: number
   }
+  reputation: ReputationStats
   event: {
     slug: string
     name: string
@@ -38,6 +44,9 @@ export type PublicCollectionSummary = {
     tradesToday: number
     tradeAttemptsLeft: number
   }
+  reputation: ReputationStats
+  offeredCardIds: string[]
+  neededCardIds: string[]
   event: {
     slug: string
     name: string
@@ -418,7 +427,7 @@ export async function getEventTrends(eventSlug: string): Promise<CardTradeEventT
 
 export async function listEventPublicCollections(
   eventSlug: string,
-  filter?: { cardId: string; role: 'needed' | 'owned' },
+  filter?: { cardId: string; role: CollectionFilterRole },
 ): Promise<PublicCollectionSummary[]> {
   const params = new URLSearchParams()
   if (filter) {
@@ -430,6 +439,13 @@ export async function listEventPublicCollections(
     `/api/card-trades/${encodeURIComponent(eventSlug)}/collections${qs ? `?${qs}` : ''}`,
   )
   return collections
+}
+
+export async function getEventCardOfferCounts(eventSlug: string): Promise<CardOfferCounts> {
+  const { counts } = await request<{ counts: CardOfferCounts }>(
+    `/api/card-trades/${encodeURIComponent(eventSlug)}/cards/offer-counts`,
+  )
+  return counts
 }
 
 export async function getEventPublicCollection(

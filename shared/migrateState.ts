@@ -1,5 +1,6 @@
 import type { AppState, CardTradeOffer, FavoriteFolder, TradeRecord, TradeSource } from './types.js'
 import { DAILY_TRADE_INITIATION_LIMIT, DEFAULT_FAVORITE_FOLDERS, SOLO_FOLDER_ID } from './types.js'
+import { getGameDayKey } from './gameDay.js'
 import { normalizeCardTradeOffer } from './tradeOffers.js'
 
 const TRADE_SOURCES: TradeSource[] = ['completed', 'observed', 'cancelled']
@@ -20,6 +21,34 @@ function normalizeTradeAttemptsLeft(value: unknown): number {
     return Math.max(0, Math.min(DAILY_TRADE_INITIATION_LIMIT, Math.floor(value)))
   }
   return DAILY_TRADE_INITIATION_LIMIT
+}
+
+function normalizeTradeAttemptsGameDay(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 32 ? value : undefined
+}
+
+/**
+ * Reset initiations to the daily cap when the game day changes.
+ * Missing `tradeAttemptsGameDay` only stamps today's key — does not wipe the counter
+ * (avoids a false reset for pre-field saves on the same game day).
+ */
+export function applyTradeAttemptsDayReset(
+  state: Pick<AppState, 'tradeAttemptsLeft' | 'tradeAttemptsGameDay'>,
+  now = new Date(),
+): Pick<AppState, 'tradeAttemptsLeft' | 'tradeAttemptsGameDay'> {
+  const today = getGameDayKey(now)
+  const stored = normalizeTradeAttemptsGameDay(state.tradeAttemptsGameDay)
+  const left = normalizeTradeAttemptsLeft(state.tradeAttemptsLeft)
+  if (stored == null || stored === today) {
+    return {
+      tradeAttemptsLeft: left,
+      tradeAttemptsGameDay: today,
+    }
+  }
+  return {
+    tradeAttemptsLeft: DAILY_TRADE_INITIATION_LIMIT,
+    tradeAttemptsGameDay: today,
+  }
 }
 
 function normalizeTradeSource(source: unknown): TradeSource {
@@ -153,6 +182,11 @@ export function migrateState(parsed: LegacyState): AppState {
     tradeOffers[cardId] = offer
   }
 
+  const attempts = applyTradeAttemptsDayReset({
+    tradeAttemptsLeft: normalizeTradeAttemptsLeft(parsed.tradeAttemptsLeft),
+    tradeAttemptsGameDay: normalizeTradeAttemptsGameDay(parsed.tradeAttemptsGameDay),
+  })
+
   return {
     owned,
     neededBy,
@@ -161,7 +195,8 @@ export function migrateState(parsed: LegacyState): AppState {
     potentialTrades: migrateTradeLike(parsed.potentialTrades),
     tradeOffers,
     locale: normalizeLocale(parsed.locale),
-    tradeAttemptsLeft: normalizeTradeAttemptsLeft(parsed.tradeAttemptsLeft),
+    tradeAttemptsLeft: attempts.tradeAttemptsLeft,
+    tradeAttemptsGameDay: attempts.tradeAttemptsGameDay,
   }
 }
 

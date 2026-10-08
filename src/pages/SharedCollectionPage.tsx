@@ -1,19 +1,32 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 import * as api from '../api/client'
 import type { CardTradeEvent, PublicCollection } from '../api/client'
 import { CardDetailModal } from '../components/CardDetailModal'
 import { CollectionView } from '../components/CollectionView'
+import { ReputationBadge } from '../components/ReputationBadge'
 import { WishlistView } from '../components/WishlistView'
 import { useAuth } from '../hooks/useAuth'
 import { useI18n } from '../i18n'
 import { BRAND_NAME } from '../brand'
-import { collectionNeededPath, collectionPath, collectionsListPath } from '../lib/events'
+import {
+  collectionNeededPath,
+  collectionPath,
+  collectionsListPath,
+  eventPath,
+  eventTabPath,
+} from '../lib/events'
 import { computeCollectionStats } from '../../shared/collectionStats'
+import { EMPTY_REPUTATION } from '../../shared/reputation'
+import { isCardTradeEventWritable } from '../../shared/eventAccess'
 import { DAILY_BONUS_TRADE_LIMIT, DAILY_TRADE_INITIATION_LIMIT, type Card } from '../types'
 import '../App.css'
 
-const SharedCollectionContext = createContext<{ collection: PublicCollection; event: CardTradeEvent } | null>(null)
+const SharedCollectionContext = createContext<{
+  collection: PublicCollection
+  event: CardTradeEvent
+  eventWritable: boolean
+} | null>(null)
 
 function useSharedCollection() {
   const value = useContext(SharedCollectionContext)
@@ -23,10 +36,33 @@ function useSharedCollection() {
 
 export function SharedCollectionLayout() {
   const { eventSlug = 'summer-party', slug = '' } = useParams()
+  const location = useLocation()
   const { t } = useI18n()
+  const auth = useAuth()
   const [payload, setPayload] = useState<{ collection: PublicCollection; event: CardTradeEvent } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [ownShareSlug, setOwnShareSlug] = useState<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (!auth.user) {
+      setOwnShareSlug(null)
+      return
+    }
+    let cancelled = false
+    setOwnShareSlug(undefined)
+    void api
+      .getEventShareSettings(eventSlug)
+      .then((share) => {
+        if (!cancelled) setOwnShareSlug(share.enabled && share.slug ? share.slug : null)
+      })
+      .catch(() => {
+        if (!cancelled) setOwnShareSlug(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [auth.user, eventSlug])
 
   useEffect(() => {
     let cancelled = false
@@ -51,7 +87,15 @@ export function SharedCollectionLayout() {
     }
   }, [eventSlug, slug])
 
-  if (loading) {
+  // Opening your own public share → editable "my collection" / wishlist.
+  if (ownShareSlug !== undefined && ownShareSlug && ownShareSlug === slug) {
+    const to = location.pathname.endsWith('/needed')
+      ? eventTabPath(eventSlug, 'wishlist')
+      : eventPath(eventSlug)
+    return <Navigate to={to} replace />
+  }
+
+  if (loading || (auth.user && ownShareSlug === undefined)) {
     return <div className="app-loading">{t('auth.loading')}</div>
   }
 
@@ -77,6 +121,7 @@ export function SharedCollectionLayout() {
   }
 
   const { collection, event } = payload
+  const eventWritable = isCardTradeEventWritable(event)
   const stats = computeCollectionStats(
     collection.owned,
     collection.neededBy,
@@ -87,7 +132,7 @@ export function SharedCollectionLayout() {
     event.cardCount > 0 ? Math.round((stats.uniqueOwned / event.cardCount) * 100) : 0
 
   return (
-    <SharedCollectionContext.Provider value={{ collection, event }}>
+    <SharedCollectionContext.Provider value={{ collection, event, eventWritable }}>
       <div className="app app--public">
         <div className="atmosphere" aria-hidden />
 
@@ -95,8 +140,14 @@ export function SharedCollectionLayout() {
           <p className="hero__brand">{BRAND_NAME}</p>
           <div className="hero__name-row">
             <h1 className="hero__title hero__title--name">{collection.username}</h1>
+            <ReputationBadge reputation={collection.reputation ?? EMPTY_REPUTATION} />
           </div>
           <p className="hero__lead">{event.name}</p>
+          {!eventWritable && (
+            <p className="hero__lead panel__status" role="status">
+              {t('app.eventReadOnly')}
+            </p>
+          )}
           <div className="hero__stats">
             <div
               className="stat"
@@ -151,12 +202,14 @@ export function SharedCollectionLayout() {
           >
             {t('app.tab.collection')}
           </NavLink>
-          <NavLink
-            to={collectionNeededPath(eventSlug, slug)}
-            className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
-          >
-            {t('app.tab.wishlist')}
-          </NavLink>
+          {eventWritable && (
+            <NavLink
+              to={collectionNeededPath(eventSlug, slug)}
+              className={({ isActive }) => `tabs__btn ${isActive ? 'is-active' : ''}`}
+            >
+              {t('app.tab.wishlist')}
+            </NavLink>
+          )}
         </nav>
 
         <main className="main">
@@ -178,7 +231,7 @@ const emptyTradeNeed = new Set<string>()
 
 export function SharedCollectionCollectionTab() {
   const { eventSlug = 'summer-party', slug = '' } = useParams()
-  const { collection, event } = useSharedCollection()
+  const { collection, event, eventWritable } = useSharedCollection()
   const auth = useAuth()
   const [detailCard, setDetailCard] = useState<Card | null>(null)
   const [myOwned, setMyOwned] = useState<Record<string, number>>({})
@@ -208,6 +261,7 @@ export function SharedCollectionCollectionTab() {
     <>
       <CollectionView
         readOnly
+        hideQty
         cards={event.cards}
         sets={event.sets}
         owned={collection.owned}
@@ -227,6 +281,7 @@ export function SharedCollectionCollectionTab() {
           eventSlug={eventSlug}
           mode="public"
           qty={collection.owned[detailCard.id] ?? 0}
+          hideQty
           neededAccountIds={collection.neededBy[detailCard.id] ?? []}
           tradeOffer={collection.tradeOffers?.[detailCard.id] ?? null}
           counterpartyShareSlug={slug || collection.slug}
@@ -234,6 +289,7 @@ export function SharedCollectionCollectionTab() {
           signedIn={Boolean(auth.user)}
           offerCards={offerCards}
           ownedForPicker={myOwned}
+          eventWritable={eventWritable}
         />
       )}
     </>
@@ -242,7 +298,7 @@ export function SharedCollectionCollectionTab() {
 
 export function SharedCollectionNeededTab() {
   const { eventSlug = 'summer-party', slug = '' } = useParams()
-  const { collection, event } = useSharedCollection()
+  const { collection, event, eventWritable } = useSharedCollection()
   const auth = useAuth()
   const [detailCard, setDetailCard] = useState<Card | null>(null)
   const [myOwned, setMyOwned] = useState<Record<string, number>>({})
@@ -266,12 +322,17 @@ export function SharedCollectionNeededTab() {
     }
   }, [auth.user, eventSlug])
 
+  if (!eventWritable) {
+    return <Navigate to={collectionPath(eventSlug, slug)} replace />
+  }
+
   const offerCards = event.cards.filter((c) => (myOwned[c.id] ?? 0) > 0)
 
   return (
     <>
       <WishlistView
         readOnly
+        hideQty
         favoriteFolders={collection.favoriteFolders}
         cards={event.cards}
         neededBy={collection.neededBy}
@@ -287,6 +348,7 @@ export function SharedCollectionNeededTab() {
           eventSlug={eventSlug}
           mode="public"
           qty={collection.owned[detailCard.id] ?? 0}
+          hideQty
           neededAccountIds={collection.neededBy[detailCard.id] ?? []}
           tradeOffer={collection.tradeOffers?.[detailCard.id] ?? null}
           counterpartyShareSlug={slug || collection.slug}
@@ -294,6 +356,7 @@ export function SharedCollectionNeededTab() {
           signedIn={Boolean(auth.user)}
           offerCards={offerCards}
           ownedForPicker={myOwned}
+          eventWritable={eventWritable}
         />
       )}
     </>

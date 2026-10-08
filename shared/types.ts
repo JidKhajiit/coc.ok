@@ -51,6 +51,8 @@ export interface AppState {
   wishlist?: string[]
   /** Remaining in-game trade initiations (manual tracker, daily cap 3). */
   tradeAttemptsLeft?: number
+  /** Game-day key (`YYYY-M-D` Moscow) when tradeAttemptsLeft was last reset. */
+  tradeAttemptsGameDay?: string
 }
 
 export const DEFAULT_FAVORITE_FOLDERS: FavoriteFolder[] = []
@@ -76,4 +78,5 @@ export const EMPTY_STATE: AppState = {
   tradeOffers: {},
   locale: 'ru',
   tradeAttemptsLeft: DAILY_TRADE_INITIATION_LIMIT,
+  tradeAttemptsGameDay: undefined,
 }

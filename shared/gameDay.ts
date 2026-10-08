@@ -14,7 +14,7 @@ function moscowWallParts(date: Date): { year: number; month: number; day: number
   }
 }
 
-function getGameDayKey(date: Date): string {
+export function getGameDayKey(date: Date = new Date()): string {
   const parts = moscowWallParts(date)
   let { year, month, day, hour } = parts
   if (hour < GAME_DAY_RESET_HOUR) {

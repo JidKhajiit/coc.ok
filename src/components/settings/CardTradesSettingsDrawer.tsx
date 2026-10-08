@@ -20,6 +20,7 @@ type Props = {
   onCopyBackup: () => Promise<void>
   onImport: (file: File) => Promise<void>
   onImportText: (text: string) => Promise<void>
+  readOnly?: boolean
 }
 
 type AccordionId = 'favoriteFolders' | 'share' | 'backup' | null
@@ -38,6 +39,7 @@ export function CardTradesSettingsDrawer({
   onCopyBackup,
   onImport,
   onImportText,
+  readOnly = false,
 }: Props) {
   const { t } = useI18n()
   const [expanded, setExpanded] = useState<AccordionId>('favoriteFolders')
@@ -103,8 +105,10 @@ export function CardTradesSettingsDrawer({
               <input
                 className="input"
                 value={drafts[a.id] ?? a.name}
+                disabled={readOnly}
                 onChange={(e) => setDrafts((prev) => ({ ...prev, [a.id]: e.target.value }))}
                 onBlur={() => {
+                  if (readOnly) return
                   const name =
                     (drafts[a.id] ?? a.name).trim() ||
                     t('settings.favoriteFolderPlaceholder', { n: i + 1 })
@@ -112,13 +116,23 @@ export function CardTradesSettingsDrawer({
                 }}
                 placeholder={t('settings.favoriteFolderPlaceholder', { n: i + 1 })}
               />
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => onRemove(a.id)}>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={readOnly}
+                onClick={() => onRemove(a.id)}
+              >
                 {t('common.delete')}
               </button>
             </li>
           ))}
         </ul>
-        <button type="button" className="btn btn--primary btn--sm" onClick={onAdd}>
+        <button
+          type="button"
+          className="btn btn--primary btn--sm"
+          disabled={readOnly}
+          onClick={onAdd}
+        >
           {t('settings.addFavoriteFolder')}
         </button>
       </SettingsAccordion>
@@ -133,10 +147,12 @@ export function CardTradesSettingsDrawer({
           <p className="settings-feedback">{t('share.profileRequired')}</p>
         ) : (
           <>
+            {readOnly && <p className="settings-feedback">{t('app.eventReadOnly')}</p>}
             <label className="settings-share__toggle">
               <input
                 type="checkbox"
                 checked={shareEnabled}
+                disabled={readOnly}
                 onChange={async () => {
                   try {
                     const share = await api.updateEventShareSettings(eventSlug, {
@@ -158,6 +174,7 @@ export function CardTradesSettingsDrawer({
               <input
                 type="checkbox"
                 checked={acceptTradeOffers}
+                disabled={readOnly}
                 onChange={async () => {
                   try {
                     const share = await api.updateEventShareSettings(eventSlug, {

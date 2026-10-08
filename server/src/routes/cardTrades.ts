@@ -13,11 +13,22 @@ import { requireAuth, requirePermission } from '../middleware/auth.js'
 import type { AppVariables } from '../middleware/session.js'
 import { computeCollectionStatsFromState } from '../../../shared/collectionStats.js'
 import { countCompletedTradesToday } from '../../../shared/gameDay.js'
+import {
+  collectionMatchCardIds,
+  filterCollectionByRole,
+  type CollectionMatchRole,
+} from '../../../shared/collectionMatch.js'
+import { isCardTradeEventWritable } from '../../../shared/eventAccess.js'
 import { migrateState } from '../../../shared/migrateState.js'
+import {
+  buildReputation,
+  EMPTY_REPUTATION,
+  type ReputationStats,
+} from '../../../shared/reputation.js'
 import { DAILY_TRADE_INITIATION_LIMIT, EMPTY_STATE, type AppState, type TradeRecord } from '../../../shared/types.js'
 import { cardId, type CardTradeCard, type CardTradeEventSeed, type CardTradeSet } from '../../../shared/cardTradeCatalog.js'
 import {
-  isCardNeededInCollection,
+  isCardOfferedAsGift,
   isCardOfferedForTrade,
 } from '../../../shared/tradeOffers.js'
 import {
@@ -85,6 +96,7 @@ const appStateSchema = z.object({
   tradeOffers: z.record(z.string(), cardTradeOfferSchema).optional(),
   locale: z.enum(['ru', 'en']).optional(),
   tradeAttemptsLeft: z.number().int().min(0).max(3).optional(),
+  tradeAttemptsGameDay: z.string().min(1).max(32).optional(),
 })
 
 const cardTradeSetSchema = z.object({
@@ -129,6 +141,7 @@ type PublicCollectionPayload = {
     tradesToday: number
     tradeAttemptsLeft: number
   }
+  reputation: ReputationStats
   event: {
     slug: string
     name: string
@@ -149,6 +162,7 @@ function toPublicPayload(
   data: AppState,
   updatedAt: Date,
   event: CardTradeEventDetail,
+  reputation: ReputationStats = EMPTY_REPUTATION,
 ): PublicCollectionPayload {
   const migrated = migrateState(data)
   const stats = computeCollectionStatsFromState(migrated)
@@ -168,12 +182,66 @@ function toPublicPayload(
       tradesToday: countCompletedTradesToday(migrated.trades),
       tradeAttemptsLeft: migrated.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT,
     },
+    reputation,
     event: {
       slug: event.slug,
       name: event.name,
       cardCount: event.cardCount,
     },
   }
+}
+
+function isCollectionMatchRole(value: string | undefined): value is CollectionMatchRole {
+  return value === 'needed' || value === 'trade' || value === 'gift'
+}
+
+async function loadReputationByProfile(
+  db: Db,
+  eventId: string,
+  profileIds: string[],
+): Promise<Map<string, ReputationStats>> {
+  const map = new Map<string, ReputationStats>()
+  for (const id of profileIds) map.set(id, EMPTY_REPUTATION)
+  if (profileIds.length === 0) return map
+
+  const deals = await db
+    .select({
+      fromProfileId: cardTradeProposals.fromProfileId,
+      toProfileId: cardTradeProposals.toProfileId,
+      type: cardTradeProposals.type,
+    })
+    .from(cardTradeProposals)
+    .where(
+      and(
+        eq(cardTradeProposals.eventId, eventId),
+        eq(cardTradeProposals.status, 'accepted'),
+        or(
+          inArray(cardTradeProposals.fromProfileId, profileIds),
+          inArray(cardTradeProposals.toProfileId, profileIds),
+        ),
+      ),
+    )
+
+  const aggregates = new Map<string, { dealsCompleted: number; giftsParticipated: number }>()
+  for (const id of profileIds) {
+    aggregates.set(id, { dealsCompleted: 0, giftsParticipated: 0 })
+  }
+
+  const profileSet = new Set(profileIds)
+  for (const deal of deals) {
+    const isGift = deal.type === 'gift'
+    for (const profileId of [deal.fromProfileId, deal.toProfileId]) {
+      if (!profileSet.has(profileId)) continue
+      const agg = aggregates.get(profileId)!
+      agg.dealsCompleted += 1
+      if (isGift) agg.giftsParticipated += 1
+    }
+  }
+
+  for (const [profileId, agg] of aggregates) {
+    map.set(profileId, buildReputation(agg))
+  }
+  return map
 }
 
 function buildEventSeed(input: z.infer<typeof createCardTradeEventSchema>): CardTradeEventSeed {
@@ -237,6 +305,21 @@ async function loadEventOr404(c: any, db: Db) {
     return null
   }
   return event
+}
+
+function eventReadonlyJson(c: any) {
+  return c.json(
+    {
+      error: 'Event is read-only',
+      code: 'EVENT_READONLY',
+    },
+    403,
+  )
+}
+
+function assertEventWritable(c: any, event: { active: boolean; endDate: string }) {
+  if (isCardTradeEventWritable(event)) return null
+  return eventReadonlyJson(c)
 }
 
 function isSummerParty(eventSlug: string) {
@@ -709,30 +792,43 @@ export function createCardTradesRoutes(db: Db) {
     if (!event) return c.json({ error: 'Event not found' }, 404)
 
     const cardIdParam = c.req.query('cardId')?.trim() || null
-    const role = c.req.query('role')
-    if (cardIdParam && role !== 'needed' && role !== 'owned') {
-      return c.json({ error: 'role must be needed or owned when cardId is set' }, 400)
+    const roleParam = c.req.query('role')?.trim()
+    // Back-compat: old clients used role=owned (trade+gift mixed).
+    const role: CollectionMatchRole | null =
+      roleParam === 'owned'
+        ? 'trade'
+        : isCollectionMatchRole(roleParam)
+          ? roleParam
+          : null
+
+    if (cardIdParam && !role) {
+      return c.json({ error: 'role must be needed, trade, or gift when cardId is set' }, 400)
     }
     if (cardIdParam && !event.cards.some((card) => card.id === cardIdParam)) {
       return c.json({ error: 'Unknown card' }, 400)
     }
 
     let rows = await listSharedRows(db, event)
-    if (cardIdParam && role === 'needed') {
+    if (cardIdParam && role) {
       rows = rows.filter((row) => {
         const state = migrateState(row.data)
-        return isCardNeededInCollection(state, cardIdParam)
-      })
-    } else if (cardIdParam && role === 'owned') {
-      rows = rows.filter((row) => {
-        const state = migrateState(row.data)
-        return isCardOfferedForTrade(state, cardIdParam)
+        if (roleParam === 'owned') {
+          return isCardOfferedForTrade(state, cardIdParam) || isCardOfferedAsGift(state, cardIdParam)
+        }
+        return filterCollectionByRole(state, cardIdParam, role)
       })
     }
+
+    const reputationByProfile = await loadReputationByProfile(
+      db,
+      event.id,
+      rows.map((row) => row.profileId),
+    )
 
     const collections = rows.map((row) => {
       const state = migrateState(row.data)
       const stats = computeCollectionStatsFromState(state)
+      const match = collectionMatchCardIds(state)
       return {
         slug: row.shareSlug,
         username: row.username,
@@ -745,6 +841,9 @@ export function createCardTradesRoutes(db: Db) {
           tradesToday: countCompletedTradesToday(state.trades),
           tradeAttemptsLeft: state.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT,
         },
+        reputation: reputationByProfile.get(row.profileId) ?? EMPTY_REPUTATION,
+        offeredCardIds: match.offeredCardIds,
+        neededCardIds: match.neededCardIds,
         event: {
           slug: event.slug,
           name: event.name,
@@ -755,11 +854,29 @@ export function createCardTradesRoutes(db: Db) {
 
     return c.json({
       collections,
-      filter:
-        cardIdParam && (role === 'needed' || role === 'owned')
-          ? { cardId: cardIdParam, role }
-          : null,
+      filter: cardIdParam && role ? { cardId: cardIdParam, role } : null,
     })
+  })
+
+  app.get('/:eventSlug/cards/offer-counts', async (c) => {
+    const event = await loadEventOr404(c, db)
+    if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    const rows = await listSharedRows(db, event)
+    const counts: Record<string, { trade: number; gift: number }> = {}
+    for (const card of event.cards) {
+      counts[card.id] = { trade: 0, gift: 0 }
+    }
+
+    for (const row of rows) {
+      const state = migrateState(row.data)
+      for (const card of event.cards) {
+        if (isCardOfferedForTrade(state, card.id)) counts[card.id]!.trade += 1
+        if (isCardOfferedAsGift(state, card.id)) counts[card.id]!.gift += 1
+      }
+    }
+
+    return c.json({ counts })
   })
 
   app.get('/:eventSlug/collections/:slug', async (c) => {
@@ -771,6 +888,8 @@ export function createCardTradesRoutes(db: Db) {
     const row = rows.find((item) => item.shareSlug === slug)
     if (!row) return c.json({ error: 'Collection not found' }, 404)
 
+    const reputationByProfile = await loadReputationByProfile(db, event.id, [row.profileId])
+
     return c.json({
       collection: toPublicPayload(
         row.shareSlug,
@@ -779,6 +898,7 @@ export function createCardTradesRoutes(db: Db) {
         row.data,
         row.updatedAt,
         event,
+        reputationByProfile.get(row.profileId) ?? EMPTY_REPUTATION,
       ),
       event,
     })
@@ -823,6 +943,8 @@ export function createCardTradesRoutes(db: Db) {
     }
 
     const row = await loadEventState(db, event, profile.id)
+    // Read-only migrate (day-reset is stamped in the response only).
+    // Persisting here would bump updatedAt and race with useAppState PUTs.
     return c.json({
       data: migrateState((row?.data ?? EMPTY_STATE) as AppState),
       ...stateMeta(row),
@@ -832,6 +954,8 @@ export function createCardTradesRoutes(db: Db) {
   app.put('/:eventSlug/state', async (c) => {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
+    const locked = assertEventWritable(c, event)
+    if (locked) return locked
 
     const raw = await c.req.text().catch(() => '')
     if (raw.length > MAX_BODY_BYTES) return c.json({ error: 'Payload too large' }, 413)
@@ -927,6 +1051,8 @@ export function createCardTradesRoutes(db: Db) {
   app.put('/:eventSlug/share', async (c) => {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
+    const locked = assertEventWritable(c, event)
+    if (locked) return locked
 
     const user = c.get('user')!
     const profile = await resolveUserActiveProfile(db, user.id)
@@ -1075,6 +1201,8 @@ export function createCardTradesRoutes(db: Db) {
   app.post('/:eventSlug/proposals', async (c) => {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
+    const locked = assertEventWritable(c, event)
+    if (locked) return locked
 
     const user = c.get('user')!
     const fromProfile = await resolveUserActiveProfile(db, user.id)
@@ -1176,6 +1304,8 @@ export function createCardTradesRoutes(db: Db) {
   app.post('/:eventSlug/proposals/:id/accept', async (c) => {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
+    const locked = assertEventWritable(c, event)
+    if (locked) return locked
 
     const user = c.get('user')!
     const id = c.req.param('id')
@@ -1336,6 +1466,8 @@ export function createCardTradesRoutes(db: Db) {
   app.post('/:eventSlug/proposals/:id/reject', async (c) => {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
+    const locked = assertEventWritable(c, event)
+    if (locked) return locked
 
     const user = c.get('user')!
     const id = c.req.param('id')
@@ -1366,6 +1498,8 @@ export function createCardTradesRoutes(db: Db) {
   app.post('/:eventSlug/proposals/:id/cancel', async (c) => {
     const event = await loadEventOr404(c, db)
     if (!event) return c.json({ error: 'Event not found' }, 404)
+    const locked = assertEventWritable(c, event)
+    if (locked) return locked
 
     const user = c.get('user')!
     const id = c.req.param('id')
