@@ -1,6 +1,8 @@
 import type { AppState, CardTradeOffer } from './types.js'
 import { effectiveDisposition, reservedByCardFromState, tradeableQty } from './tradeOffers.js'
 
+const TRADE_LIKE = new Set(['trade', 'surcharge'])
+
 /** Aggregated collection counters for hero / public share. */
 export function computeCollectionStats(
   owned: Record<string, number>,
@@ -14,7 +16,8 @@ export function computeCollectionStats(
   for (const [id, qty] of Object.entries(owned)) {
     if (qty <= 0) continue
     totalCopies += qty
-    if (effectiveDisposition(tradeOffers[id]) === 'keep') continue
+    // «на обмен» = trade/surcharge only; gift is a separate role
+    if (!TRADE_LIKE.has(effectiveDisposition(tradeOffers[id]))) continue
     const reserved = reservedByCard[id] ?? 0
     tradeable += tradeableQty(qty, reserved)
   }

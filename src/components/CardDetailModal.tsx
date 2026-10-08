@@ -13,6 +13,7 @@ import {
   formatSpecificCardNumbers,
   parseSpecificCardNumbers,
 } from '../../shared/tradeOffers'
+import { CardOfferCounts } from './CardItem'
 import { CardPicker } from './CardPicker'
 
 export type CardDetailMode = 'own-collection' | 'own-wishlist' | 'public'
@@ -27,6 +28,8 @@ type Props = {
   eventSlug: string
   mode: CardDetailMode
   qty: number
+  /** Hide exact copy count in public view. */
+  hideQty?: boolean
   neededAccountIds?: string[]
   /** Catalog for parsing specific card numbers. */
   catalogCards?: Card[]
@@ -39,6 +42,10 @@ type Props = {
   /** Cards the viewer can offer (owned with qty > 0). */
   offerCards?: Card[]
   ownedForPicker?: Record<string, number>
+  offerTradeCount?: number
+  offerGiftCount?: number
+  /** When false, hide trade/gift proposal actions (ended/archived event). */
+  eventWritable?: boolean
 }
 
 export function CardDetailModal({
@@ -48,6 +55,7 @@ export function CardDetailModal({
   eventSlug,
   mode,
   qty,
+  hideQty = false,
   neededAccountIds = [],
   catalogCards = [],
   tradeOffer = null,
@@ -57,6 +65,9 @@ export function CardDetailModal({
   signedIn = false,
   offerCards = [],
   ownedForPicker = {},
+  offerTradeCount = 0,
+  offerGiftCount = 0,
+  eventWritable = true,
 }: Props) {
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -116,16 +127,16 @@ export function CardDetailModal({
 
   if (!open) return null
 
-  const isOwn = mode === 'own-collection' || mode === 'own-wishlist'
   const isNeeded = neededAccountIds.length > 0
   const showExtrasEditor = mode === 'own-collection' && qty > 1 && onChangeTradeOffer
   const disposition = effectiveDisposition(tradeOffer)
   const want = effectiveWant(tradeOffer)
   const showWant = disposition === 'trade' || disposition === 'surcharge'
-  const publicDisposition =
-    mode === 'public' && qty > 1 && tradeOffer?.disposition
-      ? tradeOffer.disposition
-      : null
+  // Public spare copy (reserved unknown on share pages → treat as 0).
+  const publicSpare = mode === 'public' && hideQty && qty >= 2
+  const publicForTrade =
+    publicSpare && (disposition === 'trade' || disposition === 'surcharge')
+  const publicDisposition = publicSpare && disposition !== 'keep' ? disposition : null
 
   const commitOffer = (next: CardTradeOffer) => {
     onChangeTradeOffer?.(next)
@@ -171,8 +182,7 @@ export function CardDetailModal({
     setSpecificText(formatSpecificCardNumbers(ids, catalogCards) || raw.trim())
   }
 
-  const goTradeFilter = () => {
-    const role = mode === 'own-wishlist' ? 'owned' : 'needed'
+  const goFilter = (role: 'needed' | 'trade' | 'gift') => {
     navigate(`${collectionsListPath(eventSlug)}?card=${encodeURIComponent(card.id)}&mode=${role}`)
     onClose()
   }
@@ -259,17 +269,25 @@ export function CardDetailModal({
             <h3 className="card-detail__name">
               {card.unknownName ? t('common.unnamed') : card.name}
             </h3>
-            <p className="card-detail__qty">{t('cardDetail.qty', { n: qty })}</p>
+            {!hideQty && <p className="card-detail__qty">{t('cardDetail.qty', { n: qty })}</p>}
+            {hideQty && publicForTrade && (
+              <p className="card-detail__qty">{t('card.forTrade')}</p>
+            )}
             {(mode === 'own-wishlist' || mode === 'public') && (
               <p className="card-detail__needed">
                 {isNeeded ? t('cardDetail.needed') : t('cardDetail.notNeeded')}
               </p>
             )}
-            {publicDisposition && (
+            {publicDisposition && publicDisposition !== 'trade' && (
               <p className="card-detail__offer-badge">
                 {t(`cardDetail.disposition.${publicDisposition}` as MessageKey)}
               </p>
             )}
+            <CardOfferCounts
+              tradeCount={offerTradeCount}
+              giftCount={offerGiftCount}
+              className="card-detail__offer-counts"
+            />
           </div>
 
           {showExtrasEditor && (
@@ -361,21 +379,47 @@ export function CardDetailModal({
           </div>
 
           <div className="card-detail__actions">
-            {isOwn && (
-              <button type="button" className="btn btn--primary" onClick={goTradeFilter}>
-                {t('cardDetail.trade')}
+            {mode === 'own-collection' && eventWritable && (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => goFilter('needed')}
+              >
+                {t('cardDetail.exchange')}
               </button>
             )}
+            {mode === 'own-wishlist' && eventWritable && (
+              <div className="card-detail__action-row">
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => goFilter('trade')}
+                >
+                  {t('cardDetail.exchange')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => goFilter('gift')}
+                >
+                  {t('cardDetail.askGift')}
+                </button>
+              </div>
+            )}
 
-            {mode === 'public' && !acceptTradeOffers && (
+            {!eventWritable && (mode === 'own-collection' || mode === 'own-wishlist' || mode === 'public') && (
+              <p className="card-detail__restricted">{t('app.eventReadOnly')}</p>
+            )}
+
+            {mode === 'public' && eventWritable && !acceptTradeOffers && (
               <p className="card-detail__restricted">{t('share.offersRestricted')}</p>
             )}
 
-            {mode === 'public' && acceptTradeOffers && !signedIn && (
+            {mode === 'public' && eventWritable && acceptTradeOffers && !signedIn && (
               <p className="card-detail__restricted">{t('cardDetail.loginRequired')}</p>
             )}
 
-            {mode === 'public' && acceptTradeOffers && signedIn && (
+            {mode === 'public' && eventWritable && acceptTradeOffers && signedIn && (
               <>
                 {!proposing ? (
                   <div className="card-detail__action-row">

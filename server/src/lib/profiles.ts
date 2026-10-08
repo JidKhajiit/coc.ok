@@ -145,5 +145,7 @@ export function scrubPersonalStateData(data: unknown): Record<string, unknown> {
     locale: raw.locale === 'en' || raw.locale === 'ru' ? raw.locale : 'ru',
     tradeAttemptsLeft:
       typeof raw.tradeAttemptsLeft === 'number' ? raw.tradeAttemptsLeft : undefined,
+    tradeAttemptsGameDay:
+      typeof raw.tradeAttemptsGameDay === 'string' ? raw.tradeAttemptsGameDay : undefined,
   }
 }

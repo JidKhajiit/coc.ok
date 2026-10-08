@@ -2,7 +2,7 @@ import type { AppState, CardTradeOffer, ExtraDisposition, TradeWant } from './ty
 
 const DISPOSITIONS: ExtraDisposition[] = ['keep', 'trade', 'surcharge', 'gift']
 const WANTS: TradeWant[] = ['any', 'equal_or_more', 'specific']
-const OFFERABLE: ReadonlySet<ExtraDisposition> = new Set(['trade', 'surcharge', 'gift'])
+const TRADE_DISPOSITIONS: ReadonlySet<ExtraDisposition> = new Set(['trade', 'surcharge'])
 
 export type CardLike = {
   id: string
@@ -35,16 +35,40 @@ export function tradeableQty(
   return Math.max(0, ownedQty - 1 - reserved)
 }
 
-/** Spare copies available and not marked keep. */
-export function isCardOfferedForTrade(
-  state: Pick<AppState, 'owned' | 'potentialTrades' | 'tradeOffers'>,
+function hasSpareCopy(
+  state: Pick<AppState, 'owned' | 'potentialTrades'>,
   cardId: string,
 ): boolean {
   const qty = state.owned[cardId] ?? 0
   const reserved = reservedByCardFromState(state)[cardId] ?? 0
-  if (tradeableQty(qty, reserved) < 1) return false
+  return tradeableQty(qty, reserved) >= 1
+}
+
+/** Spare copies marked for trade / surcharge (not gift, not keep). */
+export function isCardOfferedForTrade(
+  state: Pick<AppState, 'owned' | 'potentialTrades' | 'tradeOffers'>,
+  cardId: string,
+): boolean {
+  if (!hasSpareCopy(state, cardId)) return false
   const disposition = effectiveDisposition(state.tradeOffers?.[cardId])
-  return OFFERABLE.has(disposition)
+  return TRADE_DISPOSITIONS.has(disposition)
+}
+
+/** Spare copies marked as gift. */
+export function isCardOfferedAsGift(
+  state: Pick<AppState, 'owned' | 'potentialTrades' | 'tradeOffers'>,
+  cardId: string,
+): boolean {
+  if (!hasSpareCopy(state, cardId)) return false
+  return effectiveDisposition(state.tradeOffers?.[cardId]) === 'gift'
+}
+
+/** Spare copies available for either trade or gift (not keep). */
+export function isCardOffered(
+  state: Pick<AppState, 'owned' | 'potentialTrades' | 'tradeOffers'>,
+  cardId: string,
+): boolean {
+  return isCardOfferedForTrade(state, cardId) || isCardOfferedAsGift(state, cardId)
 }
 
 /** Aligns with wishlist: ×0, ♥, or given in a potential trade without a spare. */

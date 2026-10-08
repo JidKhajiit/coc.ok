@@ -6,6 +6,7 @@ import { usePersistedLocale } from '../hooks/usePersistedLocale'
 import { PublicChrome } from '../components/PublicChrome'
 import { SiteFooter } from '../components/SiteFooter'
 import * as api from '../api/client'
+import { isCardTradeEventWritable } from '../../shared/eventAccess'
 import '../App.css'
 
 function collectionStats(owned: Record<string, number>) {
@@ -126,18 +127,26 @@ function CardTradesHubContent() {
         <section className="hub-events">
           <h2>{isRu ? 'Карточные эвенты' : 'Card Events'}</h2>
           <div className="hub-events__grid">
-            {events.map((event) => (
+            {events.map((event) => {
+              const writable = isCardTradeEventWritable(event)
+              return (
               <div
                 key={event.id}
-                className={`hub-event-card ${!event.active ? 'hub-event-card--disabled' : ''}`}
+                className={`hub-event-card ${!writable ? 'hub-event-card--archived' : ''}`}
               >
                 <span className="hub-event-card__icon">🃏</span>
                 <div className="hub-event-card__content">
                   <h3 className="hub-event-card__name">
                     {event.name}
-                    {!event.active && (
+                    {!writable && (
                       <span className="hub-event-card__badge">
-                        {isRu ? 'архив' : 'archived'}
+                        {!event.active
+                          ? isRu
+                            ? 'архив'
+                            : 'archived'
+                          : isRu
+                            ? 'завершён'
+                            : 'ended'}
                       </span>
                     )}
                   </h3>
@@ -147,17 +156,21 @@ function CardTradesHubContent() {
                       : `${event.cardCount} cards in ${event.setCount} sets`}
                   </p>
                 </div>
-                {event.active ? (
-                  <Link to={`/${event.slug}`} className="btn btn--primary hub-event-card__btn">
-                    {isRu ? 'Открыть трекер' : 'Open Tracker'}
-                  </Link>
-                ) : (
-                  <button className="btn btn--outline hub-event-card__btn" disabled>
-                    {isRu ? 'Архив' : 'Archived'}
-                  </button>
-                )}
+                <Link
+                  to={`/${event.slug}`}
+                  className={`btn hub-event-card__btn ${writable ? 'btn--primary' : 'btn--outline'}`}
+                >
+                  {writable
+                    ? isRu
+                      ? 'Открыть трекер'
+                      : 'Open Tracker'
+                    : isRu
+                      ? 'Смотреть'
+                      : 'View'}
+                </Link>
               </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 

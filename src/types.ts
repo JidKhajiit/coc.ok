@@ -77,6 +77,8 @@ export interface AppState {
   wishlist?: string[]
   /** Оставшиеся инициации обменов в игре (ручной счётчик, лимит 3) */
   tradeAttemptsLeft?: number
+  /** Ключ игрового дня, когда счётчик инициаций последний раз сбрасывался */
+  tradeAttemptsGameDay?: string
 }
 
 export type TabId = 'collection' | 'wishlist' | 'trades' | 'trends'

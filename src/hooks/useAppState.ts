@@ -60,7 +60,12 @@ export type StateConflict = {
   updatedByUsername: string | null
 }
 
-export function useAppState(eventSlug: string, cards: Card[], profileId: string | null) {
+export function useAppState(
+  eventSlug: string,
+  cards: Card[],
+  profileId: string | null,
+  readOnly = false,
+) {
   const [state, setState] = useState<AppState>(EMPTY_STATE)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -69,6 +74,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
   const [pendingSync, setPendingSync] = useState(false)
   const [conflict, setConflict] = useState<StateConflict | null>(null)
   const skipSaveRef = useRef(true)
+  const readOnlyRef = useRef(readOnly)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const baseUpdatedAtRef = useRef<string | null>(null)
   const dirtyRef = useRef(false)
@@ -85,6 +91,10 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
   useEffect(() => {
     stateRef.current = state
   }, [state])
+
+  useEffect(() => {
+    readOnlyRef.current = readOnly
+  }, [readOnly])
 
   useEffect(() => {
     conflictRef.current = conflict
@@ -115,6 +125,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
   const syncToServer = useCallback(
     async (snapshot: AppState, generation: number, forProfileId: string | null = profileIdRef.current) => {
+      if (readOnlyRef.current) return
       if (!forProfileId || forProfileId !== profileIdRef.current) return
       if (syncInFlightRef.current) return
       if (editGenerationRef.current !== generation) return
@@ -336,6 +347,7 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
   useEffect(() => {
     if (loading) return
+    if (readOnly) return
     if (skipSaveRef.current) {
       skipSaveRef.current = false
       return
@@ -353,13 +365,14 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
+      if (readOnlyRef.current) return
       void syncToServer(state, generation, forProfileId)
     }, SAVE_DEBOUNCE_MS)
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [state, loading, eventSlug, conflict, persistLocal, syncToServer])
+  }, [state, loading, eventSlug, conflict, persistLocal, syncToServer, readOnly])
 
   useEffect(() => {
     const flush = () => {
@@ -374,9 +387,26 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
       }
       void syncToServerRef.current(stateRef.current, editGenerationRef.current)
     }
-    const onOnline = () => flush()
+    const applyDayResetIfNeeded = () => {
+      setState((prev) => {
+        const next = migrateState(prev)
+        if (
+          next.tradeAttemptsLeft === prev.tradeAttemptsLeft &&
+          next.tradeAttemptsGameDay === prev.tradeAttemptsGameDay
+        ) {
+          return prev
+        }
+        return next
+      })
+    }
+    const onOnline = () => {
+      applyDayResetIfNeeded()
+      flush()
+    }
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') flush()
+      if (document.visibilityState !== 'visible') return
+      applyDayResetIfNeeded()
+      flush()
     }
     window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisibility)
@@ -440,9 +470,10 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
 
   const adjustTradeAttemptsLeft = useCallback((delta: number) => {
     setState((prev) => {
-      const current = prev.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT
+      const reset = migrateState(prev)
+      const current = reset.tradeAttemptsLeft ?? DAILY_TRADE_INITIATION_LIMIT
       return {
-        ...prev,
+        ...reset,
         tradeAttemptsLeft: Math.max(
           0,
           Math.min(DAILY_TRADE_INITIATION_LIMIT, current + delta),
@@ -452,13 +483,16 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
   }, [])
 
   const setTradeAttemptsLeft = useCallback((value: number) => {
-    setState((prev) => ({
-      ...prev,
-      tradeAttemptsLeft: Math.max(
-        0,
-        Math.min(DAILY_TRADE_INITIATION_LIMIT, Math.floor(value)),
-      ),
-    }))
+    setState((prev) => {
+      const reset = migrateState(prev)
+      return {
+        ...reset,
+        tradeAttemptsLeft: Math.max(
+          0,
+          Math.min(DAILY_TRADE_INITIATION_LIMIT, Math.floor(value)),
+        ),
+      }
+    })
   }, [])
 
   const toggleNeeded = useCallback((cardId: string, accountId: string) => {
@@ -748,12 +782,15 @@ export function useAppState(eventSlug: string, cards: Card[], profileId: string 
       .filter(([, qty]) => qty > 1)
       .map(([cardId, qty]) => {
         const reserved = reservedByCard[cardId] ?? 0
-        const keep = effectiveDisposition(state.tradeOffers?.[cardId]) === 'keep'
+        const disposition = effectiveDisposition(state.tradeOffers?.[cardId])
         return {
           cardId,
           qty,
           reserved,
-          tradeable: keep ? 0 : Math.max(0, qty - 1 - reserved),
+          tradeable:
+            disposition === 'trade' || disposition === 'surcharge'
+              ? Math.max(0, qty - 1 - reserved)
+              : 0,
         }
       })
   }, [state.owned, state.tradeOffers, reservedByCard])

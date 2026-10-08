@@ -42,6 +42,7 @@ interface Props {
   onConfirmPotential: (id: string) => void
   onArchivePotential: (id: string) => void
   onProposalAccepted?: () => void
+  readOnly?: boolean
 }
 
 function TradeCardRef({
@@ -129,6 +130,7 @@ export function TradesView({
   onConfirmPotential,
   onArchivePotential,
   onProposalAccepted,
+  readOnly = false,
 }: Props) {
   const { t, locale } = useI18n()
   const [givenId, setGivenId] = useState('')
@@ -324,6 +326,11 @@ export function TradesView({
 
   return (
     <section className="panel">
+      {readOnly && (
+        <p className="panel__status" role="status">
+          {t('app.eventReadOnly')}
+        </p>
+      )}
       <div className="trade-section proposals-section">
         <div className="trade-section__head">
           <div className="trade-section__title">
@@ -374,7 +381,7 @@ export function TradesView({
                     </Link>
                   )}
                 </div>
-                {p.status === 'pending' && (
+                {p.status === 'pending' && !readOnly && (
                   <div className="proposals-item__actions">
                     <button
                       type="button"
@@ -461,7 +468,7 @@ export function TradesView({
                     <p>{t('proposals.uidHidden')}</p>
                   )}
                 </div>
-                {p.status === 'pending' && (
+                {p.status === 'pending' && !readOnly && (
                   <div className="proposals-item__actions">
                     <button
                       type="button"
@@ -503,12 +510,14 @@ export function TradesView({
               </span>
             </span>
           </div>
-          <button type="button" className="btn btn--primary" onClick={openCreatePotential}>
-            {potentialFormOpen && !editingPotentialId ? t('common.close') : t('trades.plan')}
-          </button>
+          {!readOnly && (
+            <button type="button" className="btn btn--primary" onClick={openCreatePotential}>
+              {potentialFormOpen && !editingPotentialId ? t('common.close') : t('trades.plan')}
+            </button>
+          )}
         </div>
 
-        {potentialFormOpen && (
+        {potentialFormOpen && !readOnly && (
           <form
             ref={potentialFormRef}
             className="trade-form trade-form--potential"
@@ -618,6 +627,7 @@ export function TradesView({
                       {trade.note && <span className="trade-row__note">{trade.note}</span>}
                     </div>
                   </div>
+                  {!readOnly && (
                   <div className="trade-row__actions">
                     <button
                       type="button"
@@ -679,6 +689,7 @@ export function TradesView({
                       ×
                     </button>
                   </div>
+                  )}
                 </li>
               )
             })}
@@ -703,17 +714,19 @@ export function TradesView({
               <option value="mine">{t('trades.filterMine')}</option>
               <option value="archive">{t('trades.filterArchive')}</option>
             </select>
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => setFormOpen((v) => !v)}
-            >
-              {formOpen ? t('common.close') : t('trades.newTrade')}
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setFormOpen((v) => !v)}
+              >
+                {formOpen ? t('common.close') : t('trades.newTrade')}
+              </button>
+            )}
           </div>
         </div>
 
-        {formOpen && (
+        {formOpen && !readOnly && (
           <form className="trade-form" onSubmit={submit}>
             <div className="history-mode" role="group" aria-label={t('trades.modeAria')}>
               <button
@@ -843,6 +856,7 @@ export function TradesView({
                       {trade.note && <span className="trade-row__note">{trade.note}</span>}
                     </div>
                   </div>
+                  {!readOnly && (
                   <div className="trade-row__actions">
                     <button
                       type="button"
@@ -869,6 +883,7 @@ export function TradesView({
                       </svg>
                     </button>
                   </div>
+                  )}
                 </li>
               )
             })}

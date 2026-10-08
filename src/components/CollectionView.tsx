@@ -21,6 +21,9 @@ interface Props {
   tradeNeedCardIds: Set<string>
   tradeOffers?: Record<string, CardTradeOffer>
   readOnly?: boolean
+  /** Hide copy counts (foreign public collections). */
+  hideQty?: boolean
+  offerCounts?: Record<string, { trade: number; gift: number }>
   onCardClick?: (card: Card) => void
   onAdjust?: (cardId: string, delta: number) => void
   onToggleNeeded?: (cardId: string, accountId: string) => void
@@ -45,6 +48,8 @@ export function CollectionView({
   tradeNeedCardIds,
   tradeOffers = {},
   readOnly = false,
+  hideQty = false,
+  offerCounts,
   onCardClick,
   onAdjust,
   onToggleNeeded,
@@ -72,9 +77,14 @@ export function CollectionView({
       const qty = owned[c.id] ?? 0
       const reserved = reservedByCard[c.id] ?? 0
       const needed = neededBy[c.id] ?? []
-      const keep = effectiveDisposition(tradeOffers[c.id]) === 'keep'
+      const disposition = effectiveDisposition(tradeOffers[c.id])
       if (onlyOwned && qty <= 0) return false
-      if (onlyTradeable && (keep || qty - 1 - reserved < 1)) return false
+      if (
+        onlyTradeable &&
+        ((disposition !== 'trade' && disposition !== 'surcharge') || qty - 1 - reserved < 1)
+      ) {
+        return false
+      }
       if (onlyNeeded && needed.length === 0) return false
       if (
         q &&
@@ -121,19 +131,27 @@ export function CollectionView({
   function renderCard(c: Card) {
     const qty = owned[c.id] ?? 0
     const reserved = reservedByCard[c.id] ?? 0
-    const keep = effectiveDisposition(tradeOffers[c.id]) === 'keep'
-    const tradeable = keep ? 0 : Math.max(0, qty - 1 - reserved)
+    const disposition = effectiveDisposition(tradeOffers[c.id])
+    const spare = Math.max(0, qty - 1 - reserved)
+    // «на обмен» only for trade/surcharge — not gift/keep
+    const tradeable = disposition === 'trade' || disposition === 'surcharge' ? spare : 0
     const needed = neededBy[c.id] ?? []
     const allOn = favoriteFolders.every((a) => needed.includes(a.id))
+    // Marketplace badges only on missing or ♥ cards (own collection).
+    const showOffers = !readOnly && (qty === 0 || needed.length > 0)
+    const offers = showOffers ? offerCounts?.[c.id] : undefined
     return (
       <CardItem
         key={c.id}
         card={c}
-        qty={qty}
+        qty={hideQty ? undefined : qty}
         tradeable={tradeable}
-        reserved={reserved}
-        reservedFor={reservedPartners[c.id]}
-        dimmed={qty === 0}
+        hideQty={hideQty}
+        offerTradeCount={offers?.trade}
+        offerGiftCount={offers?.gift}
+        reserved={hideQty ? undefined : reserved}
+        reservedFor={hideQty ? undefined : reservedPartners[c.id]}
+        dimmed={!hideQty && qty === 0}
         showSet={sort !== 'number'}
         onClick={onCardClick ? () => onCardClick(c) : undefined}
         actions={
