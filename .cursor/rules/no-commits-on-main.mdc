@@ -1,0 +1,28 @@
+---
+description: Never commit directly on main; use a feature branch
+alwaysApply: true
+---
+
+# Коммиты только в feature-ветках
+
+**Никогда не создавай коммиты на `main` (или `master`).**
+
+## Правила
+
+1. Перед коммитом проверь текущую ветку (`git branch --show-current` / `git status`).
+2. Если сейчас `main`/`master` — сначала создай и переключись на feature-ветку, затем коммить.
+3. Имя ветки: `feature/...` или `fix/...`, по смыслу изменений.
+4. Если коммит уже случайно попал в `main` и ещё не запушен:
+   - создай ветку от текущего HEAD;
+   - верни `main` к `origin/main` (`git reset --hard origin/main`);
+   - продолжай работу в feature-ветке.
+5. Не пушь в `main` напрямую — только через PR из feature-ветки.
+
+```bash
+# ❌ ПЛОХО
+# на main: git commit ...
+
+# ✅ ХОРОШО
+git checkout -b feature/short-description
+git commit ...
+```
